@@ -5,7 +5,7 @@ import javax.xml.stream.{XMLInputFactory, XMLStreamConstants, XMLStreamReader}
 
 import eu.swdev.xml.name._
 import eu.swdev.xml.pushparser.{XmlEventReaderInputs, XmlPushParserMod}
-import eu.swdev.xml.xsd.cmp.{AppInfoElem, AnnotationElem}
+import eu.swdev.xml.xsd.cmp.{DocumentationElem, AppInfoElem, AnnotationElem}
 import org.scalatest.{FunSuite, Inside}
 
 /**
@@ -112,5 +112,47 @@ class XsdPushParserModTest extends FunSuite with Inside {
       """.stripMargin)) {
       case (Some(AnnotationElem(_, _, Some("a1"), AppInfoElem(_, _, Some("appInfoSource"), "some arbitrary content") :: Nil)), _, _, _) =>
     }
+
+    inside(parseAnnotation(
+      """
+        |<xs:annotation xmlns:xs="http://www.w3.org/2001/XMLSchema" id="a1">
+        |  <xs:appinfo source="appInfoSource">some arbitrary content <b>with</b> markup</xs:appinfo>
+        |</xs:annotation>
+      """.stripMargin)) {
+      case (Some(AnnotationElem(_, _, Some("a1"), AppInfoElem(_, _, Some("appInfoSource"), "some arbitrary content <b>with</b> markup") :: Nil)), _, _, _) =>
+    }
+
+    inside(parseAnnotation(
+      """
+        |<xs:annotation xmlns:xs="http://www.w3.org/2001/XMLSchema" id="a1">
+        |  <xs:appinfo source="appInfoSource">some arbitrary content <b>with</b> markup</xs:appinfo>
+        |  <xs:appinfo source="appInfoSource">some arbitrary content <b>with</b> markup</xs:appinfo>
+        |  <xs:appinfo source="appInfoSource">some arbitrary content <b>with</b> markup</xs:appinfo>
+        |</xs:annotation>
+      """.stripMargin)) {
+      case (Some(AnnotationElem(_, _, Some("a1"), (_: AppInfoElem) :: (_: AppInfoElem) :: (_: AppInfoElem) :: Nil)), _, _, _) =>
+    }
+
+    inside(parseAnnotation(
+      """
+        |<xs:annotation xmlns:xs="http://www.w3.org/2001/XMLSchema" id="a1">
+        |  <xs:documentation xml:lang="en" source="documentationSource">with some text</xs:documentation>
+        |</xs:annotation>
+      """.stripMargin)) {
+      case (Some(AnnotationElem(_, _, Some("a1"), DocumentationElem(_, _, Some("documentationSource"), "with some text", Some("en")) :: Nil)), _, _, _) =>
+    }
+
+    inside(parseAnnotation(
+      """
+        |<xs:annotation xmlns:xs="http://www.w3.org/2001/XMLSchema" id="a1">
+        |  <xs:appinfo source="appInfoSource">some arbitrary content <b>with</b> markup</xs:appinfo>
+        |  <xs:documentation xml:lang="en" source="documentationSource">with some text</xs:documentation>
+        |  <xs:appinfo source="appInfoSource">some arbitrary content <b>with</b> markup</xs:appinfo>
+        |  <xs:documentation xml:lang="en" source="documentationSource">with some text</xs:documentation>
+        |</xs:annotation>
+      """.stripMargin)) {
+      case (Some(AnnotationElem(_, _, Some("a1"), (_: AppInfoElem) :: (_: DocumentationElem) :: (_: AppInfoElem) :: (_: DocumentationElem) :: Nil)), _, _, _) =>
+    }
+
   }
 }

@@ -14,7 +14,7 @@ sealed trait Annotated extends OpenAttrs {
 
 sealed trait AppInfoOrDocumentationElem extends OpenAttrs {
   def source: Option[String]
-  def content: String
+  def rawXml: String
 }
 
 
@@ -47,8 +47,8 @@ sealed trait SchemaTopGroupOrAnnotationElem
 
 case class AnnotationElem(loc: Location, openAttrs: Map[QName, String], id: Option[String], seq: Seq[AppInfoOrDocumentationElem]) extends OpenAttrs with CompositionGroupElem with SchemaTopGroupOrAnnotationElem
 
-case class AppInfoElem(loc: Location, openAttrs: Map[QName, String], source: Option[String], content: String) extends AppInfoOrDocumentationElem
+case class AppInfoElem(loc: Location, openAttrs: Map[QName, String], source: Option[String], rawXml: String) extends AppInfoOrDocumentationElem
 
-case class DocumentationElem(loc: Location, openAttrs: Map[QName, String], source: Option[String], content: String, lang: Option[String]) extends AppInfoOrDocumentationElem
+case class DocumentationElem(loc: Location, openAttrs: Map[QName, String], source: Option[String], rawXml: String, lang: Option[String]) extends AppInfoOrDocumentationElem
 
 case class SchemaElem(loc: Location, openAttrs: Map[QName, String], compositions: List[CompositionGroupElem], schemaTopOrAnnotationElem: List[SchemaTopGroupOrAnnotationElem]) extends OpenAttrs

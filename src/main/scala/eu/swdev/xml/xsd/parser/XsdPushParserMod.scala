@@ -2,7 +2,7 @@ package eu.swdev.xml.xsd.parser
 
 import javax.xml.stream.{XMLStreamConstants, XMLStreamReader}
 
-import eu.swdev.xml.name.{Namespaces, LocalName, QNameFactory, QName, XsdNamespace}
+import eu.swdev.xml.name.{Namespaces, LocalName, QNameFactory, QName, XsdNamespace, XmlNamespace}
 import eu.swdev.xml.pushparser.XmlPushParserMod
 import eu.swdev.xml.xsd.cmp.{DocumentationElem, AppInfoElem, AnnotationElem}
 
@@ -44,9 +44,10 @@ trait XsdPushParserMod extends XmlPushParserMod {
   val documentation = for {
     loc <- startElement("documentation")
     src <- optionalAttr(QNameFactory.caching(new LocalName("source")))
-    lang <- optionalAttr(QNameFactory.caching(new LocalName("lang")))
+    lang <- optionalAttr(QNameFactory.caching(XmlNamespace, new LocalName("lang")))
     oa <- openAttrs
     raw <- rawXml
+    _ <- endElement
   } yield {
     DocumentationElem(loc, oa, src, raw, lang)
   }
