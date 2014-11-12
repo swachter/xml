@@ -36,6 +36,18 @@ class XsdPushParserModTest extends FunSuite with Inside {
         (av, bv, cv)
       }
 
+      val parseNestedElement2: Parser[(Option[String], String, String)] = for {
+        _ <- startElement(QNameFactory.caching(new Namespace("ns"), new LocalName("e")))
+        av <- optionalAttr(QNameFactory.caching(new LocalName("a")))
+        _ <- startElement(QNameFactory.caching(new Namespace("ns"), new LocalName("f")))
+        cv <- requiredAttr(QNameFactory.caching(new LocalName("c")))
+        _ <- endElement
+        bv <- requiredAttr(QNameFactory.caching(new LocalName("b")))
+        _ <- endElement
+      } yield {
+        (av, bv, cv)
+      }
+
     }
 
     def eventStream(string: String) = {
@@ -52,6 +64,12 @@ class XsdPushParserModTest extends FunSuite with Inside {
     val res2 = P.document(P.parseNestedElement).drive(P.initialState, eventStream("""<p:e xmlns:p="ns" a="1" b="2"><p:f c="3"/></p:e>"""))
 
     inside(res2) {
+      case (Some((Some("1"), "2", "3")), _, _, _) =>
+    }
+
+    val res3 = P.document(P.parseNestedElement2).drive(P.initialState, eventStream("""<p:e xmlns:p="ns" a="1" b="2"><p:f c="3"/></p:e>"""))
+
+    inside(res3) {
       case (Some((Some("1"), "2", "3")), _, _, _) =>
     }
 

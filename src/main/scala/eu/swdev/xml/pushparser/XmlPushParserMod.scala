@@ -43,7 +43,7 @@ trait XmlPushParserMod extends PushParserMod {
                              namespaces: List[Namespaces],
                              startedElements: List[QName],
                              log: List[String],
-                             data: StateData)
+                             data: List[StateData])
 
   sealed trait StateData
 
@@ -51,7 +51,7 @@ trait XmlPushParserMod extends PushParserMod {
 
   case object NoStateData extends StateData
 
-  val initialState = XmlParserState(List(Namespaces.initial), Nil, Nil, NoStateData)
+  val initialState = XmlParserState(List(Namespaces.initial), Nil, Nil, List(NoStateData))
 
   //
 
@@ -60,7 +60,7 @@ trait XmlPushParserMod extends PushParserMod {
   val startDocument: Parser[Location] = Parser(state => {
     Await {
       case Some(e: StartDocumentEvent) =>
-          Done(e.location, XmlParserState(state.namespaces, state.startedElements, state.log, NoStateData))
+          Done(e.location, XmlParserState(state.namespaces, state.startedElements, state.log, NoStateData :: state.data))
       case i => abort(state, s"can not start document - unexpected input: $i")
 
     }
@@ -72,7 +72,7 @@ trait XmlPushParserMod extends PushParserMod {
         if (name == e.name) {
           val ns = state.namespaces.head.nestedScope(e.newNamespaces) :: state.namespaces
           val es = e.name :: state.startedElements
-          Done(e.location, XmlParserState(ns, es, state.log, StartedElementData(e.attrs, Set[QName]())))
+          Done(e.location, XmlParserState(ns, es, state.log, StartedElementData(e.attrs, Set[QName]()) :: state.data))
         } else {
           abort(state, s"can not start element; names differ - name: $name; event.name: ${e.name}")
         }
@@ -83,7 +83,7 @@ trait XmlPushParserMod extends PushParserMod {
   val endDocument: Parser[Location] = Parser(state => {
     Await {
       case Some(e: EndDocumentEvent) =>
-        Done(e.location, XmlParserState(state.namespaces, state.startedElements, state.log, NoStateData))
+        Done(e.location, XmlParserState(state.namespaces, state.startedElements, state.log, state.data.tail))
       case i => abort(state, s"can not end document - unexpected input: $i")
 
     }
@@ -93,7 +93,7 @@ trait XmlPushParserMod extends PushParserMod {
     Await {
       case Some(e: EndElementEvent) =>
         if (e.name == state.startedElements.head) {
-          Done((), XmlParserState(state.namespaces.tail, state.startedElements.tail, state.log, NoStateData))
+          Done((), XmlParserState(state.namespaces.tail, state.startedElements.tail, state.log, state.data.tail))
         } else {
           abort(state, s"can not end element; names differ - event.name: ${e.name}; head: ${state.startedElements.head}")
         }
@@ -102,17 +102,17 @@ trait XmlPushParserMod extends PushParserMod {
   })
 
   def selectAttrs(filter: QName => Boolean): Parser[Map[QName, String]] = Parser {
-    case state@XmlParserState(_, _, _, StartedElementData(attrs, processed)) => {
+    case state@XmlParserState(_, _, _, StartedElementData(attrs, processed) :: tail) => {
       val selectedAttrs = attrs.filterKeys(filter(_))
-      Done(selectedAttrs, state.copy(data = StartedElementData(attrs, processed ++ selectedAttrs.keys)))
+      Done(selectedAttrs, state.copy(data = StartedElementData(attrs, processed ++ selectedAttrs.keys) :: tail))
     }
     case state => abort(state, s"can not extract open attributes")
   }
 
   def optionalAttr(an: QName): Parser[Option[String]] = Parser {
-    case state@XmlParserState(_, _, _, StartedElementData(attrs, processed)) => {
+    case state@XmlParserState(_, _, _, StartedElementData(attrs, processed) :: tail) => {
       if (attrs.contains(an)) {
-        Done(Some(attrs(an)), state.copy(data = StartedElementData(attrs, processed + an)))
+        Done(Some(attrs(an)), state.copy(data = StartedElementData(attrs, processed + an) :: tail))
       } else {
         Done(None, state)
       }
@@ -121,9 +121,9 @@ trait XmlPushParserMod extends PushParserMod {
   }
 
   def requiredAttr(an: QName): Parser[String] = Parser {
-    case state@XmlParserState(_, _, _, StartedElementData(attrs, processed)) => {
+    case state@XmlParserState(_, _, _, StartedElementData(attrs, processed) :: tail) => {
       if (attrs.contains(an)) {
-        Done(attrs(an), state.copy(data = StartedElementData(attrs, processed + an)))
+        Done(attrs(an), state.copy(data = StartedElementData(attrs, processed + an) :: tail))
       } else {
         abort(state, s"missing attribute - name: $an")
       }
@@ -181,7 +181,7 @@ trait XmlEventReaderInputs { self: XmlPushParserMod =>
       QNameFactory.caching(new Namespace(ns), new LocalName(ln))
     }
 
-    private trait XmlEventImpl extends XmlEvent {
+    trait XmlEventImpl extends XmlEvent {
 
       def underlying: je.XMLEvent
 
