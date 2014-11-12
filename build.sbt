@@ -1,6 +1,6 @@
 name := "xml"
 
-scalaVersion := "2.11.2"
+scalaVersion := "2.11.4"
 
 scalacOptions += "-deprecation"
 

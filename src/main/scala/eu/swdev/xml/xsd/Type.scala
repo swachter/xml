@@ -1,9 +1,10 @@
 package eu.swdev.xml.xsd
 
 import eu.swdev.xml.base.{True, False, Unknown, Ternary}
-import eu.swdev.xml.name.{Namespaces, QNameFactory, QName, NoNamespace, NoPrefix}
+import eu.swdev.xml.name._
 
 /**
+ * 
  */
 sealed trait Type {
 
@@ -16,10 +17,16 @@ sealed trait Type {
   def optBaseType: Option[Type]
 
   /**
-   * Checks if this type is a base type of the specified type. Note that a type
-   * is a base type of itself.
+   * Checks if this type is a super type of the specified type. Note that a type
+   * is a super type of itself.
    */
-  final def isBaseTypeOf(tpe: Type) = !isSubtypeOf(tpe)
+  final def isSupertypeOf(tpe: Type): Boolean = {
+    if (this == tpe) {
+      true
+    } else {
+      tpe.optBaseType.map(isSupertypeOf(_)).getOrElse(false)
+    }
+  }
 
   /**
    * Checks if this type is a subtype of the specified type. Note that a type is a
@@ -53,7 +60,9 @@ sealed trait Type {
 sealed trait DerivedType extends Type {
 
   def optBaseType = Some(baseType)
+
   def baseType: Type
+
   def isExtension: Boolean
 
   final def isSubtypeOf(tpe: Type): Boolean = {
@@ -65,8 +74,21 @@ sealed trait DerivedType extends Type {
   }
 }
 
+sealed case class ComplexType(
+                               name: QName,
+                               baseType: Type,
+                               isExtension: Boolean, attrDecls: AttrDecls, contentModel: ContentModel
+                             ) extends DerivedType { self =>
+  override val accept: Accept[TypeVisitor] = new Accept[TypeVisitor] {
+    override def apply[R, P](v: TypeVisitor[R, P], p: P): R = v.visit(self, p)
+  }
+}
+
+sealed trait ContentModel
+
 sealed trait SimpleType extends DerivedType {
   def isExtension = false
+
   val accept: Accept[SimpleTypeVisitor]
 }
 
@@ -92,7 +114,7 @@ sealed trait NonStringAtomicType extends AtomicType {
   override def whitespaceFacet: WhitespaceFacet = WhitespaceFacet.COLLAPSE_FIXED
 }
 
-sealed case class UnionType private (name: QName, memberTypes: List[AtomicOrListType]) extends SimpleType { self =>
+sealed case class UnionType private(name: QName, memberTypes: List[AtomicOrListType]) extends SimpleType {self =>
   override def baseType = anySimpleType
   require(!memberTypes.isEmpty, "a union type must have at least one member type")
   override val accept = new Accept[SimpleTypeVisitor] {
@@ -113,9 +135,10 @@ object UnionType {
 
 /**
  *
- * @param itemType
+ * @param itemType If the item type is an atomic type then Right[AtomicType] else the item type is a union type
+ *                 then the list of its atomic types.
  */
-sealed case class ListType private (name: QName, itemType: Either[AtomicType, List[AtomicType]]) extends AtomicOrListType { self =>
+sealed case class ListType private(name: QName, itemType: Either[AtomicType, List[AtomicType]]) extends AtomicOrListType {self =>
   override def baseType = anySimpleType
   override val accept = new Accept[SimpleTypeVisitor] {
     override def apply[R, P](v: SimpleTypeVisitor[R, P], p: P): R = v.visit(self, p)
@@ -146,17 +169,16 @@ import XsdNames._
 // Built-in types
 //
 
-object anyType extends Type { self =>
+object anyType extends Type {self =>
   override def name: QName = ANY_TYPE
   override def optBaseType: Option[Type] = None
   override def isSubtypeOf(tpe: Type): Boolean = this == tpe
-  //type Visitor[R, P] = TypeVisitor[R, P]
   override val accept = new Accept[TypeVisitor] {
     override def apply[R, P](v: TypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
 }
 
-object anySimpleType extends SimpleType { self =>
+object anySimpleType extends SimpleType {self =>
   override def name: QName = ANY_SIMPLE_TYPE
   override def baseType: Type = anyType
   override val accept = new Accept[SimpleTypeVisitor] {
@@ -164,7 +186,7 @@ object anySimpleType extends SimpleType { self =>
   }
 }
 
-object anyAtomicType extends AtomicType { self =>
+object anyAtomicType extends AtomicType {self =>
   override type Data = Nothing
   override def name: QName = ANY_ATOMIC_TYPE
   override def baseType: Type = anySimpleType
@@ -175,7 +197,7 @@ object anyAtomicType extends AtomicType { self =>
   }
 }
 
-object untypedAtomicType extends AtomicType { self =>
+object untypedAtomicType extends AtomicType {self =>
   override type Data = String
   override def name: QName = UNTYPED_ATOMIC
   override def baseType: Type = anyAtomicType
@@ -186,7 +208,7 @@ object untypedAtomicType extends AtomicType { self =>
   }
 }
 
-sealed case class BooleanType(name: QName, baseType: Type) extends NonStringAtomicType { self =>
+sealed case class BooleanType(name: QName, baseType: Type) extends NonStringAtomicType {self =>
   override type Data = Boolean
   override def doParse(string: String, ns: Namespaces): Data = if (string == "true" || string == "1") {
     true
@@ -200,7 +222,7 @@ sealed case class BooleanType(name: QName, baseType: Type) extends NonStringAtom
   }
 }
 
-sealed case class DoubleType(name: QName, baseType: Type) extends NonStringAtomicType { self =>
+sealed case class DoubleType(name: QName, baseType: Type) extends NonStringAtomicType {self =>
   override type Data = Double
   override def doParse(string: String, ns: Namespaces): Data = string.toDouble
   override val accept = new Accept[AtomicTypeVisitor] {
@@ -208,7 +230,7 @@ sealed case class DoubleType(name: QName, baseType: Type) extends NonStringAtomi
   }
 }
 
-sealed case class DecimalType(name: QName, baseType: Type) extends NonStringAtomicType { self =>
+sealed case class DecimalType(name: QName, baseType: Type) extends NonStringAtomicType {self =>
   override type Data = BigDecimal
   override def doParse(string: String, ns: Namespaces): Data = BigDecimal(string)
   override val accept = new Accept[AtomicTypeVisitor] {
@@ -216,7 +238,7 @@ sealed case class DecimalType(name: QName, baseType: Type) extends NonStringAtom
   }
 }
 
-sealed case class IntegerType(name: QName, baseType: Type) extends NonStringAtomicType { self =>
+sealed case class IntegerType(name: QName, baseType: Type) extends NonStringAtomicType {self =>
   override type Data = BigInt
   override def doParse(string: String, ns: Namespaces): Data = BigInt(string)
   override val accept = new Accept[AtomicTypeVisitor] {
@@ -224,7 +246,7 @@ sealed case class IntegerType(name: QName, baseType: Type) extends NonStringAtom
   }
 }
 
-sealed case class LongType(name: QName, baseType: Type) extends NonStringAtomicType { self =>
+sealed case class LongType(name: QName, baseType: Type) extends NonStringAtomicType {self =>
   override type Data = Long
   override def doParse(string: String, ns: Namespaces): Data = string.toLong
   override val accept = new Accept[AtomicTypeVisitor] {
@@ -232,7 +254,7 @@ sealed case class LongType(name: QName, baseType: Type) extends NonStringAtomicT
   }
 }
 
-sealed case class IntType(name: QName, baseType: Type) extends NonStringAtomicType { self =>
+sealed case class IntType(name: QName, baseType: Type) extends NonStringAtomicType {self =>
   override type Data = Int
   override def doParse(string: String, ns: Namespaces): Data = string.toInt
   override val accept = new Accept[AtomicTypeVisitor] {
@@ -240,7 +262,7 @@ sealed case class IntType(name: QName, baseType: Type) extends NonStringAtomicTy
   }
 }
 
-sealed case class StringType(name: QName, baseType: Type, whitespaceFacet: WhitespaceFacet) extends AtomicType { self =>
+sealed case class StringType(name: QName, baseType: Type, whitespaceFacet: WhitespaceFacet) extends AtomicType {self =>
   override type Data = String
   override def doParse(string: String, ns: Namespaces): Data = string
   override val accept = new Accept[AtomicTypeVisitor] {
@@ -248,7 +270,7 @@ sealed case class StringType(name: QName, baseType: Type, whitespaceFacet: White
   }
 }
 
-sealed case class QNameType(name: QName, baseType: Type) extends NonStringAtomicType { self =>
+sealed case class QNameType(name: QName, baseType: Type) extends NonStringAtomicType {self =>
   override type Data = QName
   override def doParse(string: String, ns: Namespaces): Data = {
     val (opf, ln) = QName.parse(string)
@@ -259,31 +281,74 @@ sealed case class QNameType(name: QName, baseType: Type) extends NonStringAtomic
   }
 }
 
+case class AttrDecls(attrUses: Map[QName, AttrUse], wildcard: Option[Wildcard])
+
+case class AttrUse(decl: AttrDecl, required: Boolean, constraint: Option[ValueConstraint])
+
+case class AttrDecl(name: String, targetNamespace: Namespace, tpe: SimpleType, constraint: Option[ValueConstraint], inheritable: Boolean)
+
+case class ValueConstraint(lexicalForm: String, defaultNotFixed: Boolean)
+
+sealed trait ProcessContents
+
+object ProcessContents {
+  object Strict extends ProcessContents
+  object Lax extends ProcessContents
+  object Skip extends ProcessContents
+}
+
+sealed trait NamespaceConstraint {
+  def disallowedNames: NamespaceConstraint.DisallowedNames
+}
+
+object NamespaceConstraint {
+  case class Any(disallowedNames: DisallowedNames) extends NamespaceConstraint
+  case class Enum(disallowedNames: DisallowedNames, namespaces: Set[QName]) extends NamespaceConstraint
+  case class Not(disallowedNames: DisallowedNames, namespaces: Set[QName]) extends NamespaceConstraint
+
+  case class DisallowedNames(qNames: Set[QName], defined: Boolean, definedSibling: Boolean)
+
+}
+
+case class Wildcard(namespaceConstraint: NamespaceConstraint, processContents: ProcessContents)
+
 //
 //
 //
 
 trait AtomicTypeVisitor[Result, Param] {
   def visit(tpe: anyAtomicType.type, p: Param): Result
+
   def visit(tpe: untypedAtomicType.type, p: Param): Result
+
   def visit(tpe: BooleanType, p: Param): Result
+
   def visit(tpe: DoubleType, p: Param): Result
+
   def visit(tpe: DecimalType, p: Param): Result
+
   def visit(tpe: IntegerType, p: Param): Result
+
   def visit(tpe: LongType, p: Param): Result
+
   def visit(tpe: IntType, p: Param): Result
+
   def visit(tpe: StringType, p: Param): Result
+
   def visit(tpe: QNameType, p: Param): Result
 }
 
 trait SimpleTypeVisitor[Result, Param] extends AtomicTypeVisitor[Result, Param] {
   def visit(tpe: anySimpleType.type, p: Param): Result
+
   def visit(tpe: ListType, p: Param): Result
+
   def visit(tpe: UnionType, p: Param): Result
 }
 
 trait TypeVisitor[Result, Param] extends SimpleTypeVisitor[Result, Param] {
   def visit(tpe: anyType.type, p: Param): Result
+  def visit(tpe: ComplexType, p: Param): Result
 }
 
 /**

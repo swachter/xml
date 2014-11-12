@@ -11,6 +11,7 @@ class TypeTest extends FunSuite {
 
     val tv: TypeVisitor[QName, Unit] = new TypeVisitor[QName, Unit] {
       override def visit(tpe: anyType.type, p: Unit): QName = tpe.name
+      override def visit(tpe: ComplexType, p: Unit): QName = tpe.name
       override def visit(tpe: anySimpleType.type, p: Unit): QName = tpe.name
       override def visit(tpe: ListType, p: Unit): QName = tpe.name
       override def visit(tpe: UnionType, p: Unit): QName = tpe.name

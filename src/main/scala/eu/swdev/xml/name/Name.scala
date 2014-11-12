@@ -1,10 +1,10 @@
 package eu.swdev.xml.name
 
-class Namespace(val underlying: String) extends AnyVal
+case class Namespace(val underlying: String) extends AnyVal
 
-class LocalName(val underlying: String) extends AnyVal
+case class LocalName(val underlying: String) extends AnyVal
 
-class Prefix(val underlying: String) extends AnyVal
+case class Prefix(val underlying: String) extends AnyVal
 
 trait QName {
   def namespace: Namespace

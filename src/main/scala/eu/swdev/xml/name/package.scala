@@ -13,4 +13,5 @@ package object name {
   val NoNamespace = new Namespace(XMLConstants.NULL_NS_URI)
   val NoPrefix = new Prefix(XMLConstants.DEFAULT_NS_PREFIX)
 
+  val XsdNamespace = new Namespace(XMLConstants.W3C_XML_SCHEMA_NS_URI)
 }
