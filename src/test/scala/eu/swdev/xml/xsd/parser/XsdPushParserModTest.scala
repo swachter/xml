@@ -5,6 +5,7 @@ import javax.xml.stream.{XMLInputFactory, XMLStreamConstants, XMLStreamReader}
 
 import eu.swdev.xml.name._
 import eu.swdev.xml.pushparser.{XmlEventReaderInputs, XmlPushParserMod}
+import eu.swdev.xml.xsd.cmp.{AppInfoElem, AnnotationElem}
 import org.scalatest.{FunSuite, Inside}
 
 /**
@@ -74,5 +75,42 @@ class XsdPushParserModTest extends FunSuite with Inside {
     }
 
 
+  }
+
+  test("annotation") {
+
+    object P extends XsdPushParserMod with XmlEventReaderInputs
+
+    def eventStream(string: String) = {
+      val reader = XMLInputFactory.newInstance().createXMLEventReader(new StringReader(string))
+      P.inputs(reader)
+    }
+
+    def parseAnnotation(raw: String) = P.document(P.annotation).drive(P.initialState, eventStream(raw))
+
+    inside(parseAnnotation(
+      """
+        |<xs:annotation xmlns:xs="http://www.w3.org/2001/XMLSchema" id="a1"/>
+      """.stripMargin)) {
+      case (Some(AnnotationElem(_, _, Some("a1"), _)), _, _, _) =>
+    }
+
+    inside(parseAnnotation(
+      """
+        |<xs:annotation xmlns:xs="http://www.w3.org/2001/XMLSchema" id="a1">
+        |  <xs:appinfo source="appInfoSource"/>
+        |</xs:annotation>
+      """.stripMargin)) {
+      case (Some(AnnotationElem(_, _, Some("a1"), AppInfoElem(_, _, Some("appInfoSource"), _) :: Nil)), _, _, _) =>
+    }
+
+    inside(parseAnnotation(
+      """
+        |<xs:annotation xmlns:xs="http://www.w3.org/2001/XMLSchema" id="a1">
+        |  <xs:appinfo source="appInfoSource">some arbitrary content</xs:appinfo>
+        |</xs:annotation>
+      """.stripMargin)) {
+      case (Some(AnnotationElem(_, _, Some("a1"), AppInfoElem(_, _, Some("appInfoSource"), "some arbitrary content") :: Nil)), _, _, _) =>
+    }
   }
 }

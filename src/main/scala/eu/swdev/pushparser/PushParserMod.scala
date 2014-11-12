@@ -96,6 +96,7 @@ trait PushParserMod { self =>
     def map[O1](f: O => O1): Step[O1] = this match {
       case Await(receive) => Await(oe => receive(oe) map f)
       case Done(out, state) => Done(f(out), state)
+      case Replay(input, next) => Replay(input, next map f)
       case Abort(state) => Abort(state)
     }
 

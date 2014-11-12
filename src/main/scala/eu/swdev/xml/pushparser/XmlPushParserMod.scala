@@ -37,6 +37,10 @@ trait XmlPushParserMod extends PushParserMod {
 
   sealed trait EndDocumentEvent extends XmlEvent
 
+  sealed trait CharacterEvent extends XmlEvent {
+    def text: String
+  }
+
   //
 
   case class XmlParserState(
@@ -209,27 +213,30 @@ trait XmlEventReaderInputs { self: XmlPushParserMod =>
 
     case class EndDocumentEventImpl(underlying: je.EndDocument) extends EndDocumentEvent with XmlEventImpl
 
-    def nextEvent: XmlEvent = {
-      reader.next match {
+    case class CharacterEventImpl(text: String, underlying: je.Characters) extends CharacterEvent with XmlEventImpl
+
+    def convertEvent(event: je.XMLEvent): XmlEvent = {
+      event match {
+        case e: je.Characters => CharacterEventImpl(e.getData, e)
         case e: je.StartElement => {
           import scala.collection.JavaConverters._
           val attrs = e.getAttributes.asScala.asInstanceOf[Iterator[je.Attribute]].map(a => toQName(a.getName) -> a.getValue).toMap
           val newNamespaces = e.getNamespaces.asScala.asInstanceOf[Iterator[je.Namespace]].map(n => new Prefix(n.getPrefix) -> new Namespace(n.getNamespaceURI)).toMap
           StartElementEventImpl(e.getName, attrs, newNamespaces, e)
         }
-        case e: je.StartDocument => StartDocumentEventImpl(e)
         case e: je.EndElement => EndElementEventImpl(e.getName, e)
+        case e: je.StartDocument => StartDocumentEventImpl(e)
         case e: je.EndDocument => EndDocumentEventImpl(e)
       }
     }
 
-    def go: Stream[XmlEvent] = if (reader.hasNext) {
-      Stream.cons(nextEvent, go)
+    def go: Stream[je.XMLEvent] = if (reader.hasNext) {
+      Stream.cons(reader.nextEvent, go)
     } else {
       Stream.empty
     }
 
-    go
+    go.filter(e => if (e.isCharacters) !e.asCharacters().isWhiteSpace else true).map(convertEvent(_))
 
   }
 
