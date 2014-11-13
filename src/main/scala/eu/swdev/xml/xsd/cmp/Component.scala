@@ -17,8 +17,6 @@ sealed trait AppInfoOrDocumentationElem extends OpenAttrs {
   def rawXml: String
 }
 
-
-
 sealed trait ComplexType extends Annotated
 
 sealed trait Located {
@@ -33,22 +31,25 @@ sealed trait OpenAttrs extends Located {
 // Groups
 //
 
-sealed trait CompositionGroupElem
+sealed trait CompositionElem
 
-sealed trait RedefinableGroupElem extends SchemaTopGroupElem
+sealed trait SchemaTopElem
 
-sealed trait SchemaTopGroupElem extends SchemaTopGroupOrAnnotationElem
+sealed trait RedefinableElem extends SchemaTopElem
 
-sealed trait SchemaTopGroupOrAnnotationElem
 
 //
 //
 //
 
-case class AnnotationElem(loc: Location, openAttrs: Map[QName, String], id: Option[String], seq: Seq[AppInfoOrDocumentationElem]) extends OpenAttrs with CompositionGroupElem with SchemaTopGroupOrAnnotationElem
+case class AnnotationElem(loc: Location, openAttrs: Map[QName, String], id: Option[String], seq: Seq[AppInfoOrDocumentationElem]) extends OpenAttrs
 
 case class AppInfoElem(loc: Location, openAttrs: Map[QName, String], source: Option[String], rawXml: String) extends AppInfoOrDocumentationElem
 
 case class DocumentationElem(loc: Location, openAttrs: Map[QName, String], source: Option[String], rawXml: String, lang: Option[String]) extends AppInfoOrDocumentationElem
 
-case class SchemaElem(loc: Location, openAttrs: Map[QName, String], compositions: List[CompositionGroupElem], schemaTopOrAnnotationElem: List[SchemaTopGroupOrAnnotationElem]) extends OpenAttrs
+case class IncludeElem(loc: Location, openAttrs: Map[QName, String], annotation: Option[AnnotationElem], schemaLocation: String) extends CompositionElem
+
+case class RedefineElem(loc: Location, openAttrs: Map[QName, String], schemaLocation: String, id: Option[String], redefinables: Seq[Either[RedefinableElem, AnnotationElem]]) extends CompositionElem
+
+case class SchemaElem(loc: Location, openAttrs: Map[QName, String], compositions: Seq[Either[CompositionElem, AnnotationElem]], schemaTop: Seq[Either[SchemaTopElem, AnnotationElem]]) extends OpenAttrs

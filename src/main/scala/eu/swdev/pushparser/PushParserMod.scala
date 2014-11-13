@@ -33,17 +33,16 @@ trait PushParserMod { self =>
       go(run(state))
     })
 
-    def &[O2](p2: => Parser[O2]): Parser[(O, O2)] = Parser(state => {
+    def filter(f: O => Boolean): Parser[O] = withFilter(f)
 
-      def go(step: Step[O]): Step[(O, O2)] = step match {
-        case Await(rec) => Await(o => go(rec(o)))
-        case Done(out, state1) => p2.run(state1).map(o1 => (out, o1))
-        case Replay(input, next) => Replay(input, go(next))
-        case Abort(state1) => Abort(state1)
-      }
-
-      go(run(state))
+    def withFilter(f: O => Boolean): Parser[O] = Parser(state => {
+      run(state).filter(f)
     })
+
+    def &[O2](p2: => Parser[O2]): Parser[(O, O2)] = for {
+      v1 <- this
+      v2 <- p2
+    } yield (v1, v2)
 
     def |[O2 >: O](p2: => Parser[O2]): Parser[O2] = Parser(state => {
 
@@ -97,6 +96,13 @@ trait PushParserMod { self =>
       case Await(receive) => Await(oe => receive(oe) map f)
       case Done(out, state) => Done(f(out), state)
       case Replay(input, next) => Replay(input, next map f)
+      case Abort(state) => Abort(state)
+    }
+
+    def filter(f: O => Boolean): Step[O] = this match {
+      case Await(receive) => Await(oe => receive(oe) filter f)
+      case Done(out, state) => if (f(out)) Done(out, state) else Abort(state)
+      case Replay(input, next) => Replay(input, next filter f)
       case Abort(state) => Abort(state)
     }
 
