@@ -71,53 +71,11 @@ trait PushParserMod { self =>
 
   }
 
-//  trait ParserOpsNN {
-//
-//    implicit class ConsOpNN[O1](val p1: Parser[O1]) {
-//      import shapeless.::
-//      //      def asHList: Parser[O :: HNil] = Parser(state => p1.run(state).map(o => o :: HNil))
-//
-//      def ::[O2](p2: Parser[O2])(implicit prep: Prepend[O2 :: HNil, O1 :: HNil]): Parser[prep.Out] = for {
-//        v1 <- p1
-//        v2 <- p2
-//      } yield prep(v2 :: HNil, v1 :: HNil)
-//    }
-//
-//  }
-//
-//  trait ParserOpsNL extends ParserOpsNN {
-//
-//    implicit class ConsOpNL[O1](val p1: Parser[O1]) {
-//      import shapeless.::
-//      //      def asHList: Parser[O :: HNil] = Parser(state => p1.run(state).map(o => o :: HNil))
-//
-//      def ::[O2 <: HList](p2: Parser[O2])(implicit prep: Prepend[O2, O1 :: HNil]): Parser[prep.Out] = for {
-//        v1 <- p1
-//        v2 <- p2
-//      } yield prep(v2, v1 :: HNil)
-//    }
-//
-//  }
-//
-//  trait ParserOpsLN extends ParserOpsNL {
-//
-//    implicit class ConsOpLN[O1 <: HList](val p1: Parser[O1]) {
-//      import shapeless.::
-//
-//      def ::[O2](p2: Parser[O2])(implicit prep: Prepend[O2 :: HNil, O1]): Parser[prep.Out] = for {
-//        v1 <- p1
-//        v2 <- p2
-//      } yield prep(v2 :: HNil, v1)
-//
-//    }
-//
-//  }
-  
   trait HListParser[IN, OUT <: HList] {
     def apply(p: Parser[IN]): Parser[OUT]
   }
 
-  trait LowPriorityHListParser {
+  trait LowPrio {
 
     import shapeless.::
 
@@ -126,10 +84,15 @@ trait PushParserMod { self =>
     }
 
   }
-  object HListParser extends LowPriorityHListParser {
 
-    implicit def noopHListParser[O <: HList] = new HListParser[O, O] {
+  object HListParser extends LowPrio {
+
+    implicit def noop[O <: HList] = new HListParser[O, O] {
       override def apply(p: Parser[O]): Parser[O] = p
+    }
+
+    implicit def nilHListParser = new HListParser[Unit, HNil] {
+      override def apply(p: Parser[Unit]): Parser[HNil] = p map (_ => HNil)
     }
 
   }
@@ -138,46 +101,16 @@ trait PushParserMod { self =>
 
     implicit class HListParserOps[O1, O1HL <: HList](val p1: Parser[O1])(implicit val ev1: HListParser[O1, O1HL]) {
 
-      def ::[O2, O2HL <: HList](p2: Parser[O2])(implicit ev2: HListParser[O2, O2HL]) /*: PrependHListParsers[ev1.Out, ev2.Out] */ = PrependHListParsers(ev1(p1), ev2(p2))
-
-      def append[O2, O2HL <: HList](p2: Parser[O2])(implicit ev2: HListParser[O2, O2HL]) /*: PrependHListParsers[ev1.Out, ev2.Out] */ = AppendHListParsers(ev1(p1), ev2(p2))
-
-    }
-
-    case class PrependHListParsers[O1 <: HList, O2 <: HList](p1: Parser[O1], p2: Parser[O2]) {
-      def ::[O3, O3HL <: HList](p3: Parser[O3])(implicit ev3: HListParser[O3, O3HL], prep2: Prepend[O2, O1]): PrependHListParsers[prep2.Out, O3HL] = {
-        val tailParser: Parser[prep2.Out] = for {
-          v2 <- p2
-          v1 <- p1
-        } yield prep2(v2, v1)
-
-        PrependHListParsers(tailParser, ev3(p3))
-      }
-    }
-
-    object PrependHListParsers {
-      implicit def toHListParser[O1 <: HList, O2 <: HList](prepend: PrependHListParsers[O1, O2])(implicit prep: Prepend[O2, O1]): Parser[prep.Out] = for {
-        v2 <- prepend.p2
-        v1 <- prepend.p1
+      def ::[O2, O2HL <: HList](p2: Parser[O2])(implicit ev2: HListParser[O2, O2HL], prep: Prepend[O2HL, O1HL]): Parser[prep.Out] = for {
+        v2 <- ev2(p2)
+        v1 <- ev1(p1)
       } yield prep(v2, v1)
-    }
 
-    case class AppendHListParsers[O1 <: HList, O2 <: HList](p1: Parser[O1], p2: Parser[O2]) {
-      def append[O3, O3HL <: HList](p3: Parser[O3])(implicit ev3: HListParser[O3, O3HL], prep2: Prepend[O1, O2]): PrependHListParsers[prep2.Out, O3HL] = {
-        val tailParser: Parser[prep2.Out] = for {
-          v1 <- p1
-          v2 <- p2
-        } yield prep2(v1, v2)
-
-        PrependHListParsers(tailParser, ev3(p3))
-      }
-    }
-
-    object AppendHListParsers {
-      implicit def toHListParser[O1 <: HList, O2 <: HList](append: AppendHListParsers[O1, O2])(implicit prep: Prepend[O1, O2]): Parser[prep.Out] = for {
-        v1 <- append.p1
-        v2 <- append.p2
+      def ~[O2, O2HL <: HList](p2: Parser[O2])(implicit ev2: HListParser[O2, O2HL], prep: Prepend[O1HL, O2HL]): Parser[prep.Out] = for {
+        v1 <- ev1(p1)
+        v2 <- ev2(p2)
       } yield prep(v1, v2)
+
     }
 
   }

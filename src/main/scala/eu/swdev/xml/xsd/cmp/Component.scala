@@ -44,9 +44,9 @@ sealed trait RedefinableElem extends SchemaTopElem
 
 case class AnnotationElem(loc: Location, id: Option[String], openAttrs: Map[QName, String], seq: Seq[AppInfoOrDocumentationElem]) extends OpenAttrs
 
-case class AppInfoElem(loc: Location, openAttrs: Map[QName, String], source: Option[String], rawXml: String) extends AppInfoOrDocumentationElem
+case class AppInfoElem(loc: Location, source: Option[String], openAttrs: Map[QName, String], rawXml: String) extends AppInfoOrDocumentationElem
 
-case class DocumentationElem(loc: Location, openAttrs: Map[QName, String], source: Option[String], rawXml: String, lang: Option[String]) extends AppInfoOrDocumentationElem
+case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], openAttrs: Map[QName, String], rawXml: String) extends AppInfoOrDocumentationElem
 
 case class IncludeElem(loc: Location, id: Option[String], openAttrs: Map[QName, String], annotation: Option[AnnotationElem], schemaLocation: String) extends CompositionElem
 

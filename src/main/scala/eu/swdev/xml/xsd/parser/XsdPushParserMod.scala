@@ -5,82 +5,37 @@ import javax.xml.stream.{XMLStreamConstants, XMLStreamReader}
 import eu.swdev.xml.name.{Namespaces, LocalName, QNameFactory, QName, XsdNamespace, XmlNamespace}
 import eu.swdev.xml.pushparser.XmlPushParserMod
 import eu.swdev.xml.xsd.cmp.{IncludeElem, DocumentationElem, AppInfoElem, AnnotationElem}
-import shapeless.{Generic, HNil, :: => :::}
+import shapeless.{Generic, HNil, ::}
 
 trait XsdPushParserMod extends XmlPushParserMod {
 
   type OpenAttrsValue = Map[QName, String]
   type IdAttrValue = Option[String]
 
-//  lazy val annotated: Parser[IdAttrValue ::: OpenAttrsValue ::: Option[AnnotationElem] ::: HNil] = pId :: pOpenAttrs :: annotation.opt :: pNil
+  lazy val annotated: Parser[IdAttrValue :: OpenAttrsValue :: Option[AnnotationElem] :: HNil] = { val r = pId ~ pOpenAttrs ~ annotation.opt; r }
 
-  lazy val annotated: Parser[Option[String] ::: Map[QName, String] ::: HNil] = {
-    val app = pId :: pOpenAttrs :: pNil
-    val ap: Parser.PrependHListParsers[Map[QName, String] ::: HNil, Option[String] ::: HNil] = app
-    val p: Parser[IdAttrValue ::: Map[QName, String] ::: HNil] = Parser.PrependHListParsers.toHListParser(ap)
-    p
-  }
+  lazy val annotation: Parser[AnnotationElem] =
+    startElement("annotation") ~ pId ~ pOpenAttrs ~ (appInfo | documentation).rep ~ endElement map (Generic[AnnotationElem].from(_))
 
-//  lazy val annotated: Parser[Option[String] ::: Map[QName, String] ::: HNil] = {
-//    val app = pId.append(pOpenAttrs)
-//    val ap: Parser.AppendHListParsers[Option[String] ::: HNil, Map[QName, String] ::: HNil] = app
-//    val p: Parser[IdAttrValue ::: Map[QName, String] ::: HNil] = Parser.AppendHListParsers.toHListParser(ap)
-//    p
-//  }
-//
-//  val x: Parser[Option[String] ::: HNil] = HListParser.mapHListParser(pId)
+  lazy val appInfo: Parser[AppInfoElem] =
+    startElement("appinfo") ~ pSourceAtt ~ pOpenAttrs ~ rawXml ~ endElement map (Generic[AppInfoElem].from(_))
 
-//  lazy val annotated: Parser[IdAttrValue ::: OpenAttrsValue ::: Option[AnnotationElem] ::: HNil] = pId.append(pOpenAttrs).append(annotation.opt)
+  lazy val documentation: Parser[DocumentationElem] =
+    startElement("documentation") ~
+      pSourceAtt ~
+      optionalAttr(QNameFactory.caching(XmlNamespace, new LocalName("lang"))) ~
+      pOpenAttrs ~ rawXml ~ endElement map (Generic[DocumentationElem].from(_))
 
-//  lazy val annotation: Parser[AnnotationElem] = for {
-//    hl <- startElement("annotation") :: pId :: pOpenAttrs :: (appInfo | documentation).rep :: pNil
-//    _ <- endElement
-//  } yield {
-//    Generic[AnnotationElem].from(hl)
-//  }
+  lazy val pId: Parser[Option[String]] = optionalAttr(QNameFactory.caching(new LocalName("id")))
 
-  lazy val annotation = for {
-    loc <- startElement("annotation")
-    id <- pId
-    oa <- pOpenAttrs
-    appInfoOrDocumentations <- (appInfo | documentation).rep
-    _ <- endElement
-  } yield {
-    AnnotationElem(loc, id, oa, appInfoOrDocumentations)
-  }
+  lazy val pInclude: Parser[IncludeElem] =
+    startElement("include") ~ annotated ~ pSchemaLocation ~ endElement map (Generic[IncludeElem].from(_))
 
-  lazy val appInfo = for {
-    loc <- startElement("appinfo")
-    oa <- pOpenAttrs
-    src <- optionalAttr(QNameFactory.caching(new LocalName("source")))
-    raw <- rawXml
-    _ <- endElement
-  } yield {
-    AppInfoElem(loc, oa, src, raw)
-  }
+  lazy val pOpenAttrs: Parser[OpenAttrsValue] = selectAttrs(_.namespace != XsdNamespace)
 
-  lazy val documentation = for {
-    loc <- startElement("documentation")
-    src <- optionalAttr(QNameFactory.caching(new LocalName("source")))
-    lang <- optionalAttr(QNameFactory.caching(XmlNamespace, new LocalName("lang")))
-    oa <- pOpenAttrs
-    raw <- rawXml
-    _ <- endElement
-  } yield {
-    DocumentationElem(loc, oa, src, raw, lang)
-  }
-  
-  lazy val pId = optionalAttr(QNameFactory.caching(new LocalName("id")))
+  lazy val pSchemaLocation: Parser[String] = requiredAttr(QNameFactory.caching(new LocalName("source")))
 
-//  lazy val pInclude = for {
-//    hl <- new Parser.HListParserOps(pNil)(HListParser.noopHListParser).::(pSchemaLocation)(HListParser.mapHListParser).::(annotated).::(startElement("include"))
-////    hl <- startElement("include") :: annotated :: pSchemaLocation :: new Parser.HListParserOps(pNil)(HListParser.noopHListParser)
-//    _ <- endElement
-//  } yield Generic[IncludeElem].from(hl)
-
-  lazy val pOpenAttrs = selectAttrs(_.namespace != XsdNamespace)
-
-  lazy val pSchemaLocation = requiredAttr(QNameFactory.caching(new LocalName("source")))
+  lazy val pSourceAtt: Parser[Option[String]] = optionalAttr(QNameFactory.caching(new LocalName("source")))
 
   private implicit def xsdQName(localName: String): QName = QNameFactory.caching(XsdNamespace, new LocalName(localName))
 }
