@@ -1,5 +1,8 @@
 package eu.swdev.pushparser
 
+import shapeless.{HNil, HList}
+import shapeless.ops.hlist.Prepend
+
 import scala.annotation.tailrec
 import scala.collection.immutable.LinearSeq
 
@@ -68,7 +71,122 @@ trait PushParserMod { self =>
 
   }
 
+//  trait ParserOpsNN {
+//
+//    implicit class ConsOpNN[O1](val p1: Parser[O1]) {
+//      import shapeless.::
+//      //      def asHList: Parser[O :: HNil] = Parser(state => p1.run(state).map(o => o :: HNil))
+//
+//      def ::[O2](p2: Parser[O2])(implicit prep: Prepend[O2 :: HNil, O1 :: HNil]): Parser[prep.Out] = for {
+//        v1 <- p1
+//        v2 <- p2
+//      } yield prep(v2 :: HNil, v1 :: HNil)
+//    }
+//
+//  }
+//
+//  trait ParserOpsNL extends ParserOpsNN {
+//
+//    implicit class ConsOpNL[O1](val p1: Parser[O1]) {
+//      import shapeless.::
+//      //      def asHList: Parser[O :: HNil] = Parser(state => p1.run(state).map(o => o :: HNil))
+//
+//      def ::[O2 <: HList](p2: Parser[O2])(implicit prep: Prepend[O2, O1 :: HNil]): Parser[prep.Out] = for {
+//        v1 <- p1
+//        v2 <- p2
+//      } yield prep(v2, v1 :: HNil)
+//    }
+//
+//  }
+//
+//  trait ParserOpsLN extends ParserOpsNL {
+//
+//    implicit class ConsOpLN[O1 <: HList](val p1: Parser[O1]) {
+//      import shapeless.::
+//
+//      def ::[O2](p2: Parser[O2])(implicit prep: Prepend[O2 :: HNil, O1]): Parser[prep.Out] = for {
+//        v1 <- p1
+//        v2 <- p2
+//      } yield prep(v2 :: HNil, v1)
+//
+//    }
+//
+//  }
+  
+  trait HListParser[IN, OUT <: HList] {
+    def apply(p: Parser[IN]): Parser[OUT]
+  }
+
+  trait LowPriorityHListParser {
+
+    import shapeless.::
+
+    implicit def mapHListParser[O] = new HListParser[O, O :: HNil] {
+      override def apply(p: Parser[O]): Parser[O :: HNil] = p map (_ :: HNil)
+    }
+
+  }
+  object HListParser extends LowPriorityHListParser {
+
+    implicit def noopHListParser[O <: HList] = new HListParser[O, O] {
+      override def apply(p: Parser[O]): Parser[O] = p
+    }
+
+  }
+
+  object Parser {
+
+    implicit class HListParserOps[O1, O1HL <: HList](val p1: Parser[O1])(implicit val ev1: HListParser[O1, O1HL]) {
+
+      def ::[O2, O2HL <: HList](p2: Parser[O2])(implicit ev2: HListParser[O2, O2HL]) /*: PrependHListParsers[ev1.Out, ev2.Out] */ = PrependHListParsers(ev1(p1), ev2(p2))
+
+      def append[O2, O2HL <: HList](p2: Parser[O2])(implicit ev2: HListParser[O2, O2HL]) /*: PrependHListParsers[ev1.Out, ev2.Out] */ = AppendHListParsers(ev1(p1), ev2(p2))
+
+    }
+
+    case class PrependHListParsers[O1 <: HList, O2 <: HList](p1: Parser[O1], p2: Parser[O2]) {
+      def ::[O3, O3HL <: HList](p3: Parser[O3])(implicit ev3: HListParser[O3, O3HL], prep2: Prepend[O2, O1]): PrependHListParsers[prep2.Out, O3HL] = {
+        val tailParser: Parser[prep2.Out] = for {
+          v2 <- p2
+          v1 <- p1
+        } yield prep2(v2, v1)
+
+        PrependHListParsers(tailParser, ev3(p3))
+      }
+    }
+
+    object PrependHListParsers {
+      implicit def toHListParser[O1 <: HList, O2 <: HList](prepend: PrependHListParsers[O1, O2])(implicit prep: Prepend[O2, O1]): Parser[prep.Out] = for {
+        v2 <- prepend.p2
+        v1 <- prepend.p1
+      } yield prep(v2, v1)
+    }
+
+    case class AppendHListParsers[O1 <: HList, O2 <: HList](p1: Parser[O1], p2: Parser[O2]) {
+      def append[O3, O3HL <: HList](p3: Parser[O3])(implicit ev3: HListParser[O3, O3HL], prep2: Prepend[O1, O2]): PrependHListParsers[prep2.Out, O3HL] = {
+        val tailParser: Parser[prep2.Out] = for {
+          v1 <- p1
+          v2 <- p2
+        } yield prep2(v1, v2)
+
+        PrependHListParsers(tailParser, ev3(p3))
+      }
+    }
+
+    object AppendHListParsers {
+      implicit def toHListParser[O1 <: HList, O2 <: HList](append: AppendHListParsers[O1, O2])(implicit prep: Prepend[O1, O2]): Parser[prep.Out] = for {
+        v1 <- append.p1
+        v2 <- append.p2
+      } yield prep(v1, v2)
+    }
+
+  }
+
   def success[X](x: X): Parser[X] = Parser(s => Done(x, s))
+
+  val pNil: Parser[HNil] = Parser(state => Done(HNil, state))
+
+  //implicit def liftToHList[O](p: Parser[O]) = p.asHList
 
   @tailrec
   private def drive[X](step: Step[X], inputs: DriveInputs, replay: DriveReplay): DriveResult[X] = step match {

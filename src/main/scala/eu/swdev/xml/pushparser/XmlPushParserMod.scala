@@ -1,12 +1,12 @@
 package eu.swdev.xml.pushparser
 
 import java.io.StringWriter
-import javax.xml.stream.events.XMLEvent
-import javax.xml.stream.{XMLEventReader, XMLStreamConstants, XMLStreamReader}
+import javax.xml.stream.XMLEventReader
 
 import eu.swdev.pushparser.PushParserMod
-import eu.swdev.xml.base.{SystemId, PublicId, ResId, Location}
+import eu.swdev.xml.base.{Location, PublicId, ResId, SystemId}
 import eu.swdev.xml.name._
+import shapeless.HNil
 
 /**
   */
@@ -176,8 +176,8 @@ trait XmlEventReaderInputs { self: XmlPushParserMod =>
 
   def inputs(reader: XMLEventReader): self.DriveInputs = {
 
-    import javax.xml.stream.{events => je}
     import javax.xml.namespace.{QName => Jqn}
+    import javax.xml.stream.{events => je}
 
     implicit def toQName(jqn: Jqn): QName = {
       val ns = jqn.getNamespaceURI
