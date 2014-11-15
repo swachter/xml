@@ -1,6 +1,6 @@
 package eu.swdev.pushparser
 
-import shapeless.{HNil, HList}
+import shapeless.{Generic, HNil, HList}
 import shapeless.ops.hlist.Prepend
 
 import scala.annotation.tailrec
@@ -23,6 +23,8 @@ trait PushParserMod { self =>
     def map[O1](f: O => O1): Parser[O1] = Parser(state => {
       run(state) map f
     })
+
+    def gmap[T](generic: Generic[T])(implicit ev: O <:< generic.Repr): Parser[T] = map (generic.from(_))
 
     def flatMap[O1](f: O => Parser[O1]): Parser[O1] = Parser(state => {
 
