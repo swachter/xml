@@ -95,22 +95,28 @@ trait XmlPushParserMod extends PushParserMod {
     }
   })
 
-  val endElement: Parser[Unit] = Parser(state => {
-    Await {
-      case Some(e: EndElementEvent) =>
-        if (e.name == state.startedElements.head) {
-          Done((), XmlParserState(state.namespaces.tail, state.startedElements.tail, state.log, state.data.tail))
-        } else {
-          abort(state, s"can not end element; names differ - event.name: ${e.name}; head: ${state.startedElements.head}")
-        }
-      case i => abort(state, s"can not end element - unexpected input: $i")
+  val endElement: Parser[Unit] = Parser {
+    case state@XmlParserState(namespaces, startedElements, log, StartedElementData(attrs, processed) :: dataTail) => {
+      Await {
+        case Some(e: EndElementEvent) =>
+          if (e.name == startedElements.head) {
+            val unprocessedAttrs = attrs.filter(t => !processed.contains(t._1))
+            val resLog = if (unprocessedAttrs.isEmpty) log else s"unprocessed attributes: $unprocessedAttrs" :: log
+            Done((), XmlParserState(namespaces.tail, startedElements.tail, resLog, dataTail))
+          } else {
+            abort(state, s"can not end element; names differ - event.name: ${e.name}; head: ${startedElements.head}")
+          }
+        case i => abort(state, s"can not end element - unexpected input: $i")
+      }
     }
-  })
+    case state => abort(state, s"can not end element; no element has started - unexpected parser state: $state")
+
+  }
 
   def selectAttrs(filter: QName => Boolean): Parser[Map[QName, String]] = Parser {
-    case state@XmlParserState(_, _, _, StartedElementData(attrs, processed) :: tail) => {
+    case state@XmlParserState(_, _, _, StartedElementData(attrs, processed) :: dataTail) => {
       val selectedAttrs = attrs.filterKeys(qn => filter(qn) && !processed.contains(qn))
-      Done(selectedAttrs, state.copy(data = StartedElementData(attrs, processed ++ selectedAttrs.keys) :: tail))
+      Done(selectedAttrs, state.copy(data = StartedElementData(attrs, processed ++ selectedAttrs.keys) :: dataTail))
     }
     case state => abort(state, s"can not extract open attributes")
   }

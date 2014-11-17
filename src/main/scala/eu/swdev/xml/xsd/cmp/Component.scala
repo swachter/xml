@@ -42,14 +42,14 @@ sealed trait RedefinableGroupElem extends SchemaTopGroupElem
 //
 //
 
-case class AnnotationElem(loc: Location, id: Option[String], openAttrs: Map[QName, String], seq: Seq[AppInfoOrDocumentationElem]) extends OpenAttrs
+case class AnnotationElem(loc: Location, id: Option[String], seq: Seq[AppInfoOrDocumentationElem], openAttrs: Map[QName, String]) extends OpenAttrs
 
-case class AppInfoElem(loc: Location, source: Option[String], openAttrs: Map[QName, String], rawXml: String) extends AppInfoOrDocumentationElem
+case class AppInfoElem(loc: Location, source: Option[String], rawXml: String, openAttrs: Map[QName, String]) extends AppInfoOrDocumentationElem
 
-case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], openAttrs: Map[QName, String], rawXml: String) extends AppInfoOrDocumentationElem
+case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], rawXml: String, openAttrs: Map[QName, String]) extends AppInfoOrDocumentationElem
 
-case class IncludeElem(loc: Location, id: Option[String], openAttrs: Map[QName, String], annotation: Option[AnnotationElem], schemaLocation: String) extends CompositionGroupElem
+case class IncludeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: String, openAttrs: Map[QName, String]) extends CompositionGroupElem
 
-case class RedefineElem(loc: Location, id: Option[String], schemaLocation: String, openAttrs: Map[QName, String], redefinables: Seq[Either[RedefinableGroupElem, AnnotationElem]]) extends CompositionGroupElem
+case class RedefineElem(loc: Location, id: Option[String], schemaLocation: String, redefinables: Seq[Either[RedefinableGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
 
-case class SchemaElem(loc: Location, id: Option[String], openAttrs: Map[QName, String], compositions: Seq[Either[CompositionGroupElem, AnnotationElem]], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]]) extends OpenAttrs
+case class SchemaElem(loc: Location, id: Option[String], compositions: Seq[Either[CompositionGroupElem, AnnotationElem]], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends OpenAttrs

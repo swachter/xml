@@ -101,7 +101,7 @@ class XsdPushParserModTest extends FunSuite with Inside {
         |  <xs:appinfo source="appInfoSource"/>
         |</xs:annotation>
       """.stripMargin)) {
-      case (Some(AnnotationElem(_, Some("a1"), _, AppInfoElem(_, Some("appInfoSource"), _, _) :: Nil)), _, _, _) =>
+      case (Some(AnnotationElem(_, Some("a1"), AppInfoElem(_, Some("appInfoSource"), _, _) :: Nil, _)), _, _, _) =>
     }
 
     inside(parseAnnotation(
@@ -110,7 +110,7 @@ class XsdPushParserModTest extends FunSuite with Inside {
         |  <xs:appinfo source="appInfoSource">some arbitrary content</xs:appinfo>
         |</xs:annotation>
       """.stripMargin)) {
-      case (Some(AnnotationElem(_, Some("a1"), _, AppInfoElem(_, Some("appInfoSource"), _, "some arbitrary content") :: Nil)), _, _, _) =>
+      case (Some(AnnotationElem(_, Some("a1"), AppInfoElem(_, Some("appInfoSource"), "some arbitrary content", _) :: Nil, _)), _, _, _) =>
     }
 
     inside(parseAnnotation(
@@ -119,7 +119,7 @@ class XsdPushParserModTest extends FunSuite with Inside {
         |  <xs:appinfo source="appInfoSource">some arbitrary content <b>with</b> markup</xs:appinfo>
         |</xs:annotation>
       """.stripMargin)) {
-      case (Some(AnnotationElem(_, Some("a1"), _, AppInfoElem(_, Some("appInfoSource"), _, "some arbitrary content <b>with</b> markup") :: Nil)), _, _, _) =>
+      case (Some(AnnotationElem(_, Some("a1"), AppInfoElem(_, Some("appInfoSource"), "some arbitrary content <b>with</b> markup", _) :: Nil, _)), _, _, _) =>
     }
 
     inside(parseAnnotation(
@@ -130,7 +130,7 @@ class XsdPushParserModTest extends FunSuite with Inside {
         |  <xs:appinfo source="appInfoSource">some arbitrary content <b>with</b> markup</xs:appinfo>
         |</xs:annotation>
       """.stripMargin)) {
-      case (Some(AnnotationElem(_, Some("a1"), _, (_: AppInfoElem) :: (_: AppInfoElem) :: (_: AppInfoElem) :: Nil)), _, _, _) =>
+      case (Some(AnnotationElem(_, Some("a1"), (_: AppInfoElem) :: (_: AppInfoElem) :: (_: AppInfoElem) :: Nil, _)), _, _, _) =>
     }
 
     inside(parseAnnotation(
@@ -139,7 +139,7 @@ class XsdPushParserModTest extends FunSuite with Inside {
         |  <xs:documentation xml:lang="en" source="documentationSource">with some text</xs:documentation>
         |</xs:annotation>
       """.stripMargin)) {
-      case (Some(AnnotationElem(_, Some("a1"), _, DocumentationElem(_, Some("documentationSource"), Some("en"), _, "with some text") :: Nil)), _, _, _) =>
+      case (Some(AnnotationElem(_, Some("a1"), DocumentationElem(_, Some("documentationSource"), Some("en"), "with some text", _) :: Nil, _)), _, _, _) =>
     }
 
     inside(parseAnnotation(
@@ -151,7 +151,7 @@ class XsdPushParserModTest extends FunSuite with Inside {
         |  <xs:documentation xml:lang="en" source="documentationSource">with some text</xs:documentation>
         |</xs:annotation>
       """.stripMargin)) {
-      case (Some(AnnotationElem(_, Some("a1"), _, (_: AppInfoElem) :: (_: DocumentationElem) :: (_: AppInfoElem) :: (_: DocumentationElem) :: Nil)), _, _, _) =>
+      case (Some(AnnotationElem(_, Some("a1"), (_: AppInfoElem) :: (_: DocumentationElem) :: (_: AppInfoElem) :: (_: DocumentationElem) :: Nil, _)), _, _, _) =>
     }
 
   }
