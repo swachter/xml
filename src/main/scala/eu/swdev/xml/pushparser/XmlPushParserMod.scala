@@ -61,6 +61,8 @@ trait XmlPushParserMod extends PushParserMod {
 
   def abort[O](state: State, msg: String): Abort[O] = Abort(state.copy(log = msg :: state.log))
 
+  def fail[O](string: String) = Parser{abort(_, string)}
+
   val startDocument: Parser[Location] = Parser(state => {
     Await {
       case Some(e: StartDocumentEvent) =>
@@ -107,7 +109,7 @@ trait XmlPushParserMod extends PushParserMod {
 
   def selectAttrs(filter: QName => Boolean): Parser[Map[QName, String]] = Parser {
     case state@XmlParserState(_, _, _, StartedElementData(attrs, processed) :: tail) => {
-      val selectedAttrs = attrs.filterKeys(filter(_))
+      val selectedAttrs = attrs.filterKeys(qn => filter(qn) && !processed.contains(qn))
       Done(selectedAttrs, state.copy(data = StartedElementData(attrs, processed ++ selectedAttrs.keys) :: tail))
     }
     case state => abort(state, s"can not extract open attributes")

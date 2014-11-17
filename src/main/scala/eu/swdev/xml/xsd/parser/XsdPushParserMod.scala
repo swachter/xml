@@ -5,7 +5,7 @@ import javax.xml.stream.{XMLStreamConstants, XMLStreamReader}
 import eu.swdev.xml.base.Location
 import eu.swdev.xml.name.{Namespaces, LocalName, QNameFactory, QName, XsdNamespace, XmlNamespace}
 import eu.swdev.xml.pushparser.XmlPushParserMod
-import eu.swdev.xml.xsd.cmp.{IncludeElem, DocumentationElem, AppInfoElem, AnnotationElem}
+import eu.swdev.xml.xsd.cmp._
 import shapeless.{HList, Generic, HNil, ::}
 
 trait XsdPushParserMod extends XmlPushParserMod {
@@ -21,6 +21,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val documentation: Parser[DocumentationElem] = xsElem("documentation")(sourceAttr ~ langAttr ~ openAttrs ~ rawXml) gmap Generic[DocumentationElem]
 
+  def either[L, R](l: Parser[L], r: Parser[R]): Parser[Either[L, R]] = (l map (Left(_))) | (r map (Right(_)))
+
   lazy val idAttr: Parser[IdAttrValue] = optionalAttr(QNameFactory.caching(new LocalName("id")))
 
   lazy val include: Parser[IncludeElem] = xsElem("include")(annotated ~ schemaLocationAttr) gmap Generic[IncludeElem]
@@ -28,6 +30,10 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val langAttr = optionalAttr(QNameFactory.caching(XmlNamespace, new LocalName("lang")))
 
   lazy val openAttrs: Parser[OpenAttrsValue] = selectAttrs(_.namespace != XsdNamespace)
+
+  lazy val redefinableGroupElem: Parser[RedefinableGroupElem] = fail("not yet implemented") // simpleType | complexType | group | attributeGroup
+
+  lazy val redefine: Parser[RedefineElem] = xsElem("redefine")(idAttr ~ schemaLocationAttr ~ openAttrs ~ either(redefinableGroupElem, annotation).rep) gmap Generic[RedefineElem]
 
   lazy val schemaLocationAttr: Parser[String] = requiredAttr(QNameFactory.caching(new LocalName("schemaLocation")))
 
@@ -37,8 +43,5 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   private def xsElem[HL <: HList](name: String)(p: Parser[HL]) = startElement(name) ~ p ~ endElement
 
-//  implicit class Ops[HL](p: Parser[HL]) {
-//    def gmap[T](generic: Generic[T])(implicit ev: HL <:< generic.Repr): Parser[T] = p map (generic.from(_))
-//  }
 
 }
