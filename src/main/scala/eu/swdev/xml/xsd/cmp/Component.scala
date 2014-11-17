@@ -12,11 +12,6 @@ sealed trait Annotated extends OpenAttrs {
   def id: Option[String]
 }
 
-sealed trait AppInfoOrDocumentationElem extends OpenAttrs {
-  def source: Option[String]
-  def rawXml: String
-}
-
 sealed trait ComplexType extends Annotated
 
 sealed trait Located {
@@ -28,28 +23,41 @@ sealed trait OpenAttrs extends Located {
 }
 
 //
-// Groups
+// groups & substitution groups
 //
 
 sealed trait CompositionGroupElem
 
-sealed trait SchemaTopGroupElem
+sealed trait FacetElem
 
 sealed trait RedefinableGroupElem extends SchemaTopGroupElem
 
+sealed trait SchemaTopGroupElem
+
+sealed trait SimpleDerivationGroupElem
 
 //
 //
 //
 
-case class AnnotationElem(loc: Location, id: Option[String], seq: Seq[AppInfoOrDocumentationElem], openAttrs: Map[QName, String]) extends OpenAttrs
+case class AnnotationElem(loc: Location, id: Option[String], seq: Seq[Either[AppInfoElem, DocumentationElem]], openAttrs: Map[QName, String]) extends OpenAttrs
 
-case class AppInfoElem(loc: Location, source: Option[String], rawXml: String, openAttrs: Map[QName, String]) extends AppInfoOrDocumentationElem
+case class AppInfoElem(loc: Location, source: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
-case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], rawXml: String, openAttrs: Map[QName, String]) extends AppInfoOrDocumentationElem
+case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], rawXml: String, openAttrs: Map[QName, String])
+
+case class ImportElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: String, namespace: Option[String], openAttrs: Map[QName, String]) extends CompositionGroupElem
 
 case class IncludeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: String, openAttrs: Map[QName, String]) extends CompositionGroupElem
 
-case class RedefineElem(loc: Location, id: Option[String], schemaLocation: String, redefinables: Seq[Either[RedefinableGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
+case class OverrideElem(loc: Location, id: Option[String], schemaLocation: String, overrides: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
+
+case class PatternElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, openAttrs: Map[QName, String]) extends FacetElem
+
+case class RedefineElem(loc: Location, id: Option[String], schemaLocation: String, redefines: Seq[Either[RedefinableGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
+
+case class RestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: Option[String], tpe: Option[SimpleTypeElem], facets: List[FacetElem], openAttrs: Map[QName, String]) extends SimpleDerivationGroupElem
 
 case class SchemaElem(loc: Location, id: Option[String], compositions: Seq[Either[CompositionGroupElem, AnnotationElem]], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends OpenAttrs
+
+case class SimpleTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], derivation: SimpleDerivationGroupElem, openAttrs: Map[QName, String]) extends RedefinableGroupElem
