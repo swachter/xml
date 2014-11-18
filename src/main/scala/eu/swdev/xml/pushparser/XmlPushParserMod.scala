@@ -140,8 +140,19 @@ trait XmlPushParserMod extends PushParserMod {
         abort(state, s"missing attribute - name: $an")
       }
     }
-    case state => abort(state, s"can not extract required attribute - name: $an")
+    case state => abort(state, s"can not access attributes; invalid parser state - attribute name: $an; parser state: $state")
   }
+
+  def resolveQn(lexicalRep: String): Parser[QName] = Parser (state => {
+    val (pr, ln) = QName.parse(lexicalRep)
+    pr match {
+      case Some(p) => state.namespaces.head.namespaceForPrefix(p) match {
+        case Some(n) => Done(QNameFactory.caching(n, ln), state)
+        case None => abort(state, s"unbounded namespace prefix: $p")
+      }
+      case None => Done(QNameFactory.caching(ln), state)
+    }
+  })
 
   def document[O](p: Parser[O]) = for {
     _ <- startDocument

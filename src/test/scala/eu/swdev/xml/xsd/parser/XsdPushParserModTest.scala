@@ -5,16 +5,28 @@ import javax.xml.stream.{XMLInputFactory, XMLStreamConstants, XMLStreamReader}
 
 import eu.swdev.xml.name._
 import eu.swdev.xml.pushparser.{XmlEventReaderInputs, XmlPushParserMod}
-import eu.swdev.xml.xsd.cmp.{DocumentationElem, AppInfoElem, AnnotationElem}
+import eu.swdev.xml.xsd.cmp.{UnionElem, DocumentationElem, AppInfoElem, AnnotationElem}
 import org.scalatest.{FunSuite, Inside}
 
 /**
   */
 class XsdPushParserModTest extends FunSuite with Inside {
 
+  trait StringInputs extends XmlEventReaderInputs { self: XmlPushParserMod =>
+
+    def inputs(string: String): DriveInputs = {
+      val reader = XMLInputFactory.newInstance().createXMLEventReader(new StringReader(string))
+      inputs(reader)
+    }
+
+    def parseDoc[O](p: Parser[O]): String => DriveResult[O] = s => document(p).drive(initialState, inputs(s))
+
+  }
+
+
   test("simple") {
 
-    object P extends XmlPushParserMod with XmlEventReaderInputs {
+    object parsers extends XmlPushParserMod with StringInputs {
 
       val parseElement: Parser[(Option[String], String)] = for {
         _ <- startElement(QNameFactory.caching(new Namespace("ns"), new LocalName("e")))
@@ -51,24 +63,19 @@ class XsdPushParserModTest extends FunSuite with Inside {
 
     }
 
-    def eventStream(string: String) = {
-      val reader = XMLInputFactory.newInstance().createXMLEventReader(new StringReader(string))
-      P.inputs(reader)
-    }
-
-    val res = P.document(P.parseElement).drive(P.initialState, eventStream("""<p:e xmlns:p="ns" a="1" b="2"/>"""))
+    val res = parsers.parseDoc(parsers.parseElement)("""<p:e xmlns:p="ns" a="1" b="2"/>""")
 
     inside(res) {
       case (Some((Some("1"), "2")), _, _, _) =>
     }
 
-    val res2 = P.document(P.parseNestedElement).drive(P.initialState, eventStream("""<p:e xmlns:p="ns" a="1" b="2"><p:f c="3"/></p:e>"""))
+    val res2 = parsers.parseDoc(parsers.parseNestedElement)("""<p:e xmlns:p="ns" a="1" b="2"><p:f c="3"/></p:e>""")
 
     inside(res2) {
       case (Some((Some("1"), "2", "3")), _, _, _) =>
     }
 
-    val res3 = P.document(P.parseNestedElement2).drive(P.initialState, eventStream("""<p:e xmlns:p="ns" a="1" b="2"><p:f c="3"/></p:e>"""))
+    val res3 = parsers.parseDoc(parsers.parseNestedElement2)("""<p:e xmlns:p="ns" a="1" b="2"><p:f c="3"/></p:e>""")
 
     inside(res3) {
       case (Some((Some("1"), "2", "3")), _, _, _) =>
@@ -77,16 +84,11 @@ class XsdPushParserModTest extends FunSuite with Inside {
 
   }
 
+  object xsdParsers extends XsdPushParserMod with StringInputs
+
   test("annotation") {
 
-    object P extends XsdPushParserMod with XmlEventReaderInputs
-
-    def eventStream(string: String) = {
-      val reader = XMLInputFactory.newInstance().createXMLEventReader(new StringReader(string))
-      P.inputs(reader)
-    }
-
-    def parseAnnotation(raw: String) = P.document(P.annotation).drive(P.initialState, eventStream(raw))
+    def parseAnnotation(raw: String) = xsdParsers.parseDoc(xsdParsers.annotation)(raw)
 
     inside(parseAnnotation(
       """
@@ -152,6 +154,19 @@ class XsdPushParserModTest extends FunSuite with Inside {
         |</xs:annotation>
       """.stripMargin)) {
       case (Some(AnnotationElem(_, Some("a1"), (_: Left[AppInfoElem, DocumentationElem]) :: (_: Right[AppInfoElem, DocumentationElem]) :: (_: Left[AppInfoElem, DocumentationElem]) :: (_: Right[AppInfoElem, DocumentationElem]) :: Nil, _)), _, _, _) =>
+    }
+
+  }
+
+  test("union") {
+
+    def parse(raw: String) = xsdParsers.parseDoc(xsdParsers.union)(raw)
+
+    inside(parse(
+      """
+        |<xs:union xmlns:xs="http://www.w3.org/2001/XMLSchema" id="a1" memberTypes="a xs:b"/>
+      """.stripMargin)) {
+      case (Some(UnionElem(_, _, _, Some(QName(Namespace(""), LocalName("a"), _) :: QName(XsdNamespace, LocalName("b"), _) :: Nil), _, _)), _, _, _) =>
     }
 
   }

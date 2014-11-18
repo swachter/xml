@@ -52,7 +52,15 @@ trait PushParserMod { self =>
     def |[O2 >: O](p2: => Parser[O2]): Parser[O2] = Parser(state => {
 
       def go(step: Step[O], replay: List[Input]): Step[O2] = step match {
-        case Await(rec) => Await(o => go(rec(o), o.map(e => e :: replay).getOrElse(replay)))
+        case Await(rec) => {
+          if (replay.isEmpty) {
+            // record the input when it is available
+            Await(o => go(rec(o), o.map(_ :: replay).getOrElse(replay)))
+          } else {
+            // the first variant already consumed some input -> commit to the first variant
+            step
+          }
+        }
         case Done(out, state1) => Done(out, state1)
         case Replay(input, next) => Replay(input, go(next, replay.drop(input.length)))
         case Abort(_) => Replay(replay, p2.run(state))
@@ -103,25 +111,28 @@ trait PushParserMod { self =>
 
     implicit class HListParserOps[O1, O1HL <: HList](val p1: Parser[O1])(implicit val ev1: HListParser[O1, O1HL]) {
 
-      def ::[O2, O2HL <: HList](p2: Parser[O2])(implicit ev2: HListParser[O2, O2HL], prep: Prepend[O2HL, O1HL]): Parser[prep.Out] = for {
-        v2 <- ev2(p2)
-        v1 <- ev1(p1)
-      } yield prep(v2, v1)
+//      def ::[O2, O2HL <: HList](p2: Parser[O2])(implicit ev2: HListParser[O2, O2HL], prep: Prepend[O2HL, O1HL]): Parser[prep.Out] = for {
+//        v2 <- ev2(p2)
+//        v1 <- ev1(p1)
+//      } yield prep(v2, v1)
 
-      def ~[O2, O2HL <: HList](p2: Parser[O2])(implicit ev2: HListParser[O2, O2HL], prep: Prepend[O1HL, O2HL]): Parser[prep.Out] = for {
+      def ~[O2, O2HL <: HList](p2: => Parser[O2])(implicit ev2: HListParser[O2, O2HL], prep: Prepend[O1HL, O2HL]): Parser[prep.Out] = for {
         v1 <- ev1(p1)
         v2 <- ev2(p2)
       } yield prep(v1, v2)
 
     }
 
+    def map2[O1, O2, O3](p1: Parser[O1], p2: Parser[O2])(f: (O1, O2) => O3): Parser[O3] = for {
+      o1 <- p1
+      o2 <- p2
+    } yield f(o1, o2)
+
   }
 
   def success[X](x: X): Parser[X] = Parser(s => Done(x, s))
 
   val pNil: Parser[HNil] = Parser(state => Done(HNil, state))
-
-  //implicit def liftToHList[O](p: Parser[O]) = p.asHList
 
   @tailrec
   private def drive[X](step: Step[X], inputs: DriveInputs, replay: DriveReplay): DriveResult[X] = step match {
