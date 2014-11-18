@@ -52,7 +52,7 @@ case class ComplexTypeElem()
 
 case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
-case class ElementElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], subsitutionGroup: Option[List[QName]], minOccurs: Int, maxOccurs: MaxOccursToken, inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], alternatives: Seq[AlternativeElem], constraints: Seq[IdentityConstraintGroupElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
+case class ElementElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], subsitutionGroup: Option[List[QName]], minOccurs: Int, maxOccurs: MaxOccursToken, default: Option[String], fixed: Option[String], nillable: Option[Boolean], abstr: Option[Boolean], fina: Option[Derivation.ElementControlSet], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], alternatives: Seq[AlternativeElem], constraints: Seq[IdentityConstraintGroupElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
 
 case class FieldElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[NamespaceToken.XPathDefault], openAttrs: Map[QName, String])
 
@@ -101,3 +101,15 @@ sealed trait MaxOccursToken
 
 case object Unbounded extends MaxOccursToken
 case class MaxBounded(max: Int) extends MaxOccursToken
+
+object Derivation {
+
+  sealed trait ElementControl
+  object Extension extends ElementControl
+  object Restriction extends ElementControl
+
+  sealed trait ElementControlSet
+  object All extends ElementControlSet
+  sealed case class ListedElementControls(list: List[ElementControl]) extends ElementControlSet
+  
+}
