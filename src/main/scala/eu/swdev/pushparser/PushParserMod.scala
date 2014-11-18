@@ -128,6 +128,9 @@ trait PushParserMod { self =>
       o2 <- p2
     } yield f(o1, o2)
 
+    def traverse[A, B](as: List[A])(f: A => Parser[B]): Parser[List[B]] =
+      as.foldRight(success(List[B]()))((a, p) => map2(f(a), p)(_ :: _))
+
   }
 
   def success[X](x: X): Parser[X] = Parser(s => Done(x, s))

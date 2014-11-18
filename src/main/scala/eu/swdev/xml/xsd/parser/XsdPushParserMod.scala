@@ -14,6 +14,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
   type OpenAttrsValue = Map[QName, String]
   type IdAttrValue = Option[String]
 
+  lazy val alternative: Parser[AlternativeElem] = xsElem("alternative")(annotated ~ strAttr("test").opt ~ typeAttr.opt ~ xPathDefaultNamespaceAttr.opt ~ either(simpleType, complexType).opt) gmap Generic[AlternativeElem]
+
   lazy val annotated: Parser[IdAttrValue :: Option[AnnotationElem] :: HNil] = { val r = idAttr ~ annotation.opt; r }
 
   lazy val annotation: Parser[AnnotationElem] = xsElem("annotation")(idAttr ~ either(appInfo, documentation).rep) gmap Generic[AnnotationElem]
@@ -22,34 +24,57 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val baseAttr: Parser[QName] = qnAttr("base")
 
+  lazy val complexType: Parser[Nothing] = ??? // TODO
+
   lazy val compositionGroupElem: Parser[CompositionGroupElem] = include | importElem | redefine | overrideElem
+
+  lazy val defRef = nameAttr.opt ~ refAttr.opt
 
   lazy val documentation: Parser[DocumentationElem] = xsElem("documentation")(sourceAttr ~ langAttr ~ rawXml) gmap Generic[DocumentationElem]
 
+  lazy val element: Parser[ElementElem] = xsElem("element")(annotated ~ defRef ~ typeAttr.opt ~ substitutionGroup.opt ~ occurs ~ either(simpleType, complexType).opt ~ alternative.rep ~ identityConstraint.rep) gmap Generic[ElementElem ]
+
   lazy val facet: Parser[FacetElem] = pattern // TODO
+
+  lazy val field: Parser[FieldElem] = xsElem("field")(annotated ~ xPathAttr ~ xPathDefaultNamespaceAttr.opt) gmap Generic[FieldElem]
 
   lazy val idAttr: Parser[IdAttrValue] = strAttr("id").opt
 
+  lazy val identityConstraint: Parser[IdentityConstraintGroupElem] = unique | key | keyref
+
   lazy val importElem: Parser[ImportElem] = xsElem("import")(annotated ~ schemaLocationAttr ~ namespaceAttr) gmap Generic[ImportElem]
+
+  lazy val include: Parser[IncludeElem] = xsElem("include")(annotated ~ schemaLocationAttr) gmap Generic[IncludeElem]
 
   lazy val itemTypeAttr: Parser[QName] = qnAttr("itemType")
 
-  lazy val include: Parser[IncludeElem] = xsElem("include")(annotated ~ schemaLocationAttr) gmap Generic[IncludeElem]
+  lazy val key: Parser[KeyElem] = xsElem("key")(keybase) gmap Generic[KeyElem]
+
+  lazy val keybase = annotated ~ strAttr("name").opt ~ qnAttr("ref").opt ~ (selector & field.rep1).opt
+
+  lazy val keyref: Parser[KeyRefElem] = xsElem("keyref")(keybase ~ qnAttr("refer").opt) gmap Generic[KeyRefElem]
 
   lazy val langAttr = optionalAttr(QNameFactory.caching(XmlNamespace, new LocalName("lang")))
 
   lazy val list: Parser[ListElem] = xsElem("list")(annotated ~ itemTypeAttr.opt ~ simpleType.opt) gmap Generic[ListElem]
 
-  lazy val memberTypes: Parser[List[QName]] = {
-    def qnParsers(ls: List[String]): Parser[List[QName]] = ls.foldRight(success(List[QName]()))((s, p) => Parser.map2(resolveQn(s), p)(_ :: _))
-    strAttr("memberTypes").map(_.split("\\s+").toList) flatMap qnParsers
-  }
+  lazy val maxOccursAttr: Parser[MaxOccursToken] = (strAttr("maxOccurs") map {
+    case "unbounded" => Unbounded
+    case s => MaxBounded(s.toInt)
 
-  lazy val nameAttr = optionalAttr(QNameFactory.caching(new LocalName("name")))
+  }) | success(MaxBounded(1))
+
+  lazy val memberTypes: Parser[List[QName]] = qNamesParser(strAttr("memberTypes"))
+
+  lazy val minOccursAttr: Parser[Int] = (strAttr("minOccurs") map (_.toInt)) | success(1)
+
+  lazy val nameAttr = strAttr("name")
 
   lazy val namespaceAttr = optionalAttr(QNameFactory.caching(new LocalName("namespace")))
 
   lazy val noFixedFacet = annotated ~ valueAttr
+
+  lazy val occurs = minOccursAttr ~ maxOccursAttr
 
   lazy val openAttrs: Parser[OpenAttrsValue] = selectAttrs(_.namespace != XsdNamespace)
 
@@ -57,9 +82,11 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val pattern: Parser[PatternElem] = xsElem("pattern")(noFixedFacet) gmap Generic[PatternElem]
 
-  lazy val redefinableGroupElem: Parser[RedefinableGroupElem] = simpleType // TODO | complexType | group | attributeGroup
+  lazy val redefinableGroupElem: Parser[RedefinableGroupElem] = simpleType | complexType // TODO | group | attributeGroup
 
   lazy val redefine: Parser[RedefineElem] = xsElem("redefine")(idAttr ~ schemaLocationAttr ~ either(redefinableGroupElem, annotation).rep) gmap Generic[RedefineElem]
+
+  lazy val refAttr = qnAttr("ref")
 
   lazy val restriction: Parser[RestrictionElem] = xsElem("restriction")(annotated ~ baseAttr.opt ~ simpleRestrictionModel) gmap Generic[RestrictionElem]
 
@@ -67,19 +94,36 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val schemaLocationAttr: Parser[String] = requiredAttr(QNameFactory.caching(new LocalName("schemaLocation")))
 
-  lazy val schemaTopGroupElem: Parser[SchemaTopGroupElem] = redefinableGroupElem // TODO | element | attribute | notation
+  lazy val schemaTopGroupElem: Parser[SchemaTopGroupElem] = redefinableGroupElem | element // TODO | attribute | notation
+
+  lazy val selector: Parser[SelectorElem] = xsElem("selector")(annotated ~ xPathAttr ~ xPathDefaultNamespaceAttr.opt) gmap Generic[SelectorElem]
 
   lazy val simpleDerivationGroupElem: Parser[SimpleDerivationGroupElem] = restriction | list | union
 
   lazy val simpleRestrictionModel: Parser[Option[SimpleTypeElem] :: List[FacetElem] :: HNil] = { val r = simpleType.opt ~ facet.rep; r }
 
-  lazy val simpleType: Parser[SimpleTypeElem] = xsElem("simpleType")(annotated ~ nameAttr ~ simpleDerivationGroupElem) gmap Generic[SimpleTypeElem]
+  lazy val simpleType: Parser[SimpleTypeElem] = xsElem("simpleType")(annotated ~ nameAttr.opt ~ simpleDerivationGroupElem) gmap Generic[SimpleTypeElem]
 
   lazy val sourceAttr: Parser[Option[String]] = optionalAttr(QNameFactory.caching(new LocalName("source")))
 
+  lazy val substitutionGroup: Parser[List[QName]] = qNamesParser(strAttr("substitutionGroup"))
+
+  lazy val typeAttr = qnAttr("type")
+
   lazy val union: Parser[UnionElem] = xsElem("union")(annotated ~ memberTypes.opt ~ simpleType.rep) gmap Generic[UnionElem]
 
+  lazy val unique: Parser[UniqueElem] = xsElem("unique")(keybase) gmap Generic[UniqueElem]
+
   lazy val valueAttr: Parser[String] = requiredAttr(QNameFactory.caching(new LocalName("value")))
+
+  lazy val xPathAttr: Parser[String] = strAttr("xpath")
+
+  lazy val xPathDefaultNamespaceAttr: Parser[NamespaceToken.XPathDefault] = strAttr("xpathDefaultNamespace") map {
+    case "##defaultNamespace" => NamespaceToken.Default
+    case "##targetNamespace" => NamespaceToken.Target
+    case "##local" => NamespaceToken.Local
+    case s => NamespaceToken.AnyUri(s)
+  }
 
   //
   //
@@ -94,5 +138,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
   private def strAttr(name: String): Parser[String] = requiredAttr(QNameFactory.caching(new LocalName(name)))
 
   private def qnAttr(name: String): Parser[QName] = strAttr(name) flatMap resolveQn
+
+  private def qNamesParser(p: Parser[String]): Parser[List[QName]] = p map (_.split("\\s+").toList) flatMap (Parser.traverse(_)(resolveQn))
 
 }
