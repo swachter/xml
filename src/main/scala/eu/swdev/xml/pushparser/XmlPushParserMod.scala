@@ -8,6 +8,8 @@ import eu.swdev.xml.base.{Location, PublicId, ResId, SystemId}
 import eu.swdev.xml.name._
 import shapeless.HNil
 
+import scala.util.{Failure, Success, Try}
+
 /**
   */
 trait XmlPushParserMod extends PushParserMod {
@@ -151,6 +153,13 @@ trait XmlPushParserMod extends PushParserMod {
         case None => abort(state, s"unbounded namespace prefix: $p")
       }
       case None => Done(QNameFactory.caching(ln), state)
+    }
+  })
+
+  def parseInt(lexicalRep: String): Parser[Int] = Parser(state => {
+    Try(lexicalRep.toInt) match {
+      case Success(i) => Done(i, state)
+      case Failure(ex) => abort(state, s"invalid integer: $lexicalRep; exception: ${ex.getMessage}")
     }
   })
 

@@ -18,17 +18,25 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val abstractAttr = booleanAttr("abstract")
 
+  lazy val all: Parser[AllElem] = xsElem("all")(annotated ~ nestedParticle.rep) gmap Generic[AllElem]
+
   lazy val alternative: Parser[AlternativeElem] = xsElem("alternative")(annotated ~ strAttr("test").opt ~ typeAttr.opt ~ xPathDefaultNamespaceAttr.opt ~ either(simpleType, complexType).opt) gmap Generic[AlternativeElem]
 
   lazy val annotated: Parser[IdAttrValue :: Option[AnnotationElem] :: HNil] = { val r = idAttr ~ annotation.opt; r }
 
   lazy val annotation: Parser[AnnotationElem] = xsElem("annotation")(idAttr ~ either(appInfo, documentation).rep) gmap Generic[AnnotationElem]
 
+  lazy val any: Parser[AnyElem] = xsElem("any")(annotated ~ anyAttrGroup ~ notQNameAttr.opt ~ occurs) gmap Generic[AnyElem]
+
+  lazy val anyAttrGroup = namespaceListAttr.opt ~ notNamespaceAttr.opt ~ processContentsAttr.opt
+
   lazy val appInfo: Parser[AppInfoElem] = xsElem("appinfo")(sourceAttr ~ rawXml) gmap Generic[AppInfoElem]
 
   lazy val attribute: Parser[AttributeElem] = xsElem("attribute")(annotated ~ defRef ~ typeAttr.opt ~ useAttr ~ defaultAttr.opt ~ fixedAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ inheritableAttr.opt ~ simpleType.opt) gmap Generic[AttributeElem]
 
   lazy val baseAttr: Parser[QName] = qnAttr("base")
+
+  lazy val choice: Parser[ChoiceElem] = xsElem("choice")(annotated ~ nestedParticle.rep) gmap Generic[ChoiceElem]
 
   lazy val complexType: Parser[Nothing] = ??? // TODO
 
@@ -58,6 +66,10 @@ trait XsdPushParserMod extends XmlPushParserMod {
     case s => fail(s"invalid form: $s")
   }
 
+  lazy val groupDef: Parser[GroupDefElem] = xsElem("group")(annotated ~ nameAttr ~ (all | choice | sequence)) gmap Generic[GroupDefElem]
+
+  lazy val groupRef: Parser[GroupRefElem] = xsElem("group")(annotated ~ refAttr) gmap Generic[GroupRefElem]
+
   lazy val idAttr: Parser[IdAttrValue] = strAttr("id").opt
 
   lazy val identityConstraint: Parser[IdentityConstraintGroupElem] = unique | key | keyref
@@ -80,27 +92,42 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val list: Parser[ListElem] = xsElem("list")(annotated ~ itemTypeAttr.opt ~ simpleType.opt) gmap Generic[ListElem]
 
-  lazy val maxOccursAttr: Parser[MaxOccursToken] = (strAttr("maxOccurs") map {
-    case "unbounded" => Unbounded
-    case s => MaxBounded(s.toInt)
-
-  }) | success(MaxBounded(1))
+  lazy val maxOccursAttr: Parser[MaxOccursToken] = strAttr("maxOccurs") >>= {
+    case "unbounded" => success(Unbounded)
+    case s => parseInt.apply(s).map(MaxBounded(_))
+  }
 
   lazy val memberTypes: Parser[List[QName]] = qNamesAttr("memberTypes")
 
-  lazy val minOccursAttr: Parser[Int] = (strAttr("minOccurs") map (_.toInt)) | success(1)
+  lazy val minOccursAttr: Parser[Int] = strAttr("minOccurs") >>= parseInt
 
   lazy val nameAttr = strAttr("name")
 
+  lazy val nestedParticle: Parser[NestedParticle] = element | groupRef | choice | sequence | any
+
   lazy val namespaceAttr = optionalAttr(QNameFactory.caching(new LocalName("namespace")))
+
+  lazy val namespaceListAttr: Parser[NsList.Def] = strAttr("namespace") >>= {
+    case "##any" => success(NsList.Any)
+    case "##other" => success(NsList.Other)
+    case s => Parser.traverse(s.split("\\s+").toList)(stringToNsToken).map(NsList.ExDef(_))
+  }
 
   lazy val nillableAttr: Parser[Boolean] = booleanAttr("nillable")
 
-  lazy val notation: Parser[NotationElem] = xsElem("notation")(annotated ~ nameAttr ~ publicAttr.opt ~ systemAttr.opt) gmap Generic[NotationElem]
-
   lazy val noFixedFacet = annotated ~ valueAttr
 
-  lazy val occurs = minOccursAttr ~ maxOccursAttr
+  lazy val notation: Parser[NotationElem] = xsElem("notation")(annotated ~ nameAttr ~ publicAttr.opt ~ systemAttr.opt) gmap Generic[NotationElem]
+
+  lazy val notNamespaceAttr: Parser[List[NsList.Token]] = strAttr("notNamespace") map (_.split("\\s+").toList) >>= (Parser.traverse(_)(stringToNsToken))
+
+  lazy val notQNameAttr: Parser[List[QnList.Token]] = strAttr("notQName") map (_.split("\\s+").toList) >>= (Parser.traverse(_) {
+    case "##defined" => success(QnList.Defined)
+    case "##definedSibling" => success(QnList.DefinedSibling)
+    case s => resolveQn(s).map(QnList.QnItem(_))
+  })
+
+  lazy val occurs = minOccursAttr.opt ~ maxOccursAttr.opt
 
   lazy val openAttrs: Parser[OpenAttrsValue] = selectAttrs(_.namespace != XsdNamespace)
 
@@ -108,9 +135,16 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val pattern: Parser[PatternElem] = xsElem("pattern")(noFixedFacet) gmap Generic[PatternElem]
 
+  lazy val processContentsAttr: Parser[Pc.Token] = strAttr("processContents") >>= {
+    case "skip" => success(Pc.Skip)
+    case "lax" => success(Pc.Lax)
+    case "strict" => success(Pc.Strict)
+    case s => fail(s"invalid process contents value: $s")
+  }
+
   lazy val publicAttr: Parser[String] = strAttr("public")
 
-  lazy val redefinableGroupElem: Parser[RedefinableGroupElem] = simpleType | complexType // TODO | group | attributeGroup
+  lazy val redefinableGroupElem: Parser[RedefinableGroupElem] = simpleType | complexType | groupDef // TODO | attributeGroup
 
   lazy val redefine: Parser[RedefineElem] = xsElem("redefine")(idAttr ~ schemaLocationAttr ~ either(redefinableGroupElem, annotation).rep) gmap Generic[RedefineElem]
 
@@ -125,6 +159,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val schemaTopGroupElem: Parser[SchemaTopGroupElem] = redefinableGroupElem | element | attribute | notation
 
   lazy val selector: Parser[SelectorElem] = xsElem("selector")(annotated ~ xPathAttr ~ xPathDefaultNamespaceAttr.opt) gmap Generic[SelectorElem]
+
+  lazy val sequence: Parser[SequenceElem] = xsElem("sequence")(annotated ~ nestedParticle.rep) gmap Generic[SequenceElem]
 
   lazy val simpleDerivationGroupElem: Parser[SimpleDerivationGroupElem] = restriction | list | union
 
@@ -182,12 +218,11 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   private def xsElem[HL <: HList](name: String)(p: => Parser[HL])(implicit ev: Prepend[Location :: HL, OpenAttrsValue :: HNil]) = startElement(QNameFactory.caching(XsdNamespace, new LocalName(name))) ~ p ~ openAttrsEndElem
 
-  private def anyUriAttr(name: String): Parser[URI] = strAttr(name) >>= { s =>
-    Try { new URI(s) } match {
-      case Success(uri) => success(uri)
-      case Failure(ex) => fail(s"invalid uri: $s; exception: ${ex.getMessage}")
-    }
-  }
+  private def anyUriAttr(name: String): Parser[URI] = strAttr(name) >>= parseUri
+
+  private val parseInt: String => Parser[Int] = ((s: String) => s.toInt) onEx ((s, ex) => s"invalid integer: $s; exception: ${ex.getMessage}")
+
+  private val parseUri: String => Parser[URI] = ((s: String) => new URI(s)) onEx ((s, ex) => s"invalid uri: $s; exception: ${ex.getMessage}")
 
   private def strAttr(name: String): Parser[String] = requiredAttr(QNameFactory.caching(new LocalName(name)))
 
@@ -215,5 +250,19 @@ trait XsdPushParserMod extends XmlPushParserMod {
     }.map(Derivation.CtrlExSet(_))
   }
 
+  private def stringToNsToken(string: String): Parser[NsList.Token] = string match {
+    case "##targetNamespace" => success(NsList.TargetNamespace)
+    case "##local" => success(NsList.Local)
+    case s => parseUri.apply(s).map(NsList.UriItem(_))
+  }
+
+  implicit class FunctionOps[I, O](f: I => O) {
+    def onEx(on: (I, Throwable) => String): I => Parser[O] = i => {
+      Try(f(i)) match {
+        case Success(s) => success(s)
+        case Failure(ex) => fail(on(i, ex))
+      }
+    }
+  }
 
 }
