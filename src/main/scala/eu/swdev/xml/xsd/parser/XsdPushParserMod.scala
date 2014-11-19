@@ -26,6 +26,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val appInfo: Parser[AppInfoElem] = xsElem("appinfo")(sourceAttr ~ rawXml) gmap Generic[AppInfoElem]
 
+  lazy val attribute: Parser[AttributeElem] = xsElem("attribute")(annotated ~ defRef ~ typeAttr.opt ~ useAttr ~ defaultAttr.opt ~ fixedAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ inheritableAttr.opt ~ simpleType.opt) gmap Generic[AttributeElem]
+
   lazy val baseAttr: Parser[QName] = qnAttr("base")
 
   lazy val complexType: Parser[Nothing] = ??? // TODO
@@ -50,7 +52,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val fixedAttr = strAttr("fixed")
 
-  lazy val formAttr = strAttr("form") flatMap {
+  lazy val formAttr = strAttr("form") >>= {
     case "qualified" => success(Qualified)
     case "unqualified" => success(Unqualified)
     case s => fail(s"invalid form: $s")
@@ -63,6 +65,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val importElem: Parser[ImportElem] = xsElem("import")(annotated ~ schemaLocationAttr ~ namespaceAttr) gmap Generic[ImportElem]
 
   lazy val include: Parser[IncludeElem] = xsElem("include")(annotated ~ schemaLocationAttr) gmap Generic[IncludeElem]
+
+  lazy val inheritableAttr: Parser[Boolean] = booleanAttr("inheritable")
 
   lazy val itemTypeAttr: Parser[QName] = qnAttr("itemType")
 
@@ -90,7 +94,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val namespaceAttr = optionalAttr(QNameFactory.caching(new LocalName("namespace")))
 
-  lazy val nillableAttr = booleanAttr("nillable")
+  lazy val nillableAttr: Parser[Boolean] = booleanAttr("nillable")
+
+  lazy val notation: Parser[NotationElem] = xsElem("notation")(annotated ~ nameAttr ~ publicAttr.opt ~ systemAttr.opt) gmap Generic[NotationElem]
 
   lazy val noFixedFacet = annotated ~ valueAttr
 
@@ -101,6 +107,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val overrideElem: Parser[OverrideElem] = xsElem("override")(idAttr ~ schemaLocationAttr ~ either(schemaTopGroupElem, annotation).rep) gmap Generic[OverrideElem]
 
   lazy val pattern: Parser[PatternElem] = xsElem("pattern")(noFixedFacet) gmap Generic[PatternElem]
+
+  lazy val publicAttr: Parser[String] = strAttr("public")
 
   lazy val redefinableGroupElem: Parser[RedefinableGroupElem] = simpleType | complexType // TODO | group | attributeGroup
 
@@ -114,7 +122,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val schemaLocationAttr: Parser[String] = requiredAttr(QNameFactory.caching(new LocalName("schemaLocation")))
 
-  lazy val schemaTopGroupElem: Parser[SchemaTopGroupElem] = redefinableGroupElem | element // TODO | attribute | notation
+  lazy val schemaTopGroupElem: Parser[SchemaTopGroupElem] = redefinableGroupElem | element | attribute | notation
 
   lazy val selector: Parser[SelectorElem] = xsElem("selector")(annotated ~ xPathAttr ~ xPathDefaultNamespaceAttr.opt) gmap Generic[SelectorElem]
 
@@ -128,18 +136,22 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val substitutionGroup: Parser[List[QName]] = qNamesAttr("substitutionGroup")
 
-  lazy val targetNamespaceAttr: Parser[URI] = strAttr("targetNamespace") flatMap { s =>
-    Try { new URI(s) } match {
-      case Success(uri) => success(uri)
-      case Failure(ex) => fail(s"invalid target namespace: $s; exception: ${ex.getMessage}")
-    }
-  }
+  lazy val systemAttr: Parser[URI] = anyUriAttr("system")
+
+  lazy val targetNamespaceAttr: Parser[URI] = anyUriAttr("targetNamespace")
 
   lazy val typeAttr = qnAttr("type")
 
   lazy val union: Parser[UnionElem] = xsElem("union")(annotated ~ memberTypes.opt ~ simpleType.rep) gmap Generic[UnionElem]
 
   lazy val unique: Parser[UniqueElem] = xsElem("unique")(keybase) gmap Generic[UniqueElem]
+
+  lazy val useAttr: Parser[Use] = (strAttr("use") >>= {
+    case "optional" => success(Optional)
+    case "required" => success(Required)
+    case "prohibited" => success(Prohibited)
+    case s => fail(s"invalid use attribute: $s")
+  }) | success(Optional)
 
   lazy val valueAttr: Parser[String] = requiredAttr(QNameFactory.caching(new LocalName("value")))
 
@@ -170,13 +182,20 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   private def xsElem[HL <: HList](name: String)(p: => Parser[HL])(implicit ev: Prepend[Location :: HL, OpenAttrsValue :: HNil]) = startElement(QNameFactory.caching(XsdNamespace, new LocalName(name))) ~ p ~ openAttrsEndElem
 
+  private def anyUriAttr(name: String): Parser[URI] = strAttr(name) >>= { s =>
+    Try { new URI(s) } match {
+      case Success(uri) => success(uri)
+      case Failure(ex) => fail(s"invalid uri: $s; exception: ${ex.getMessage}")
+    }
+  }
+
   private def strAttr(name: String): Parser[String] = requiredAttr(QNameFactory.caching(new LocalName(name)))
 
-  private def qnAttr(name: String): Parser[QName] = strAttr(name) flatMap resolveQn
+  private def qnAttr(name: String): Parser[QName] = strAttr(name) >>= resolveQn
 
-  private def qNamesAttr(name: String): Parser[List[QName]] = strAttr(name) map (_.split("\\s+").toList) flatMap (Parser.traverse(_)(resolveQn))
+  private def qNamesAttr(name: String): Parser[List[QName]] = strAttr(name) map (_.split("\\s+").toList) >>= (Parser.traverse(_)(resolveQn))
 
-  private def booleanAttr(name: String): Parser[Boolean] = strAttr(name) flatMap {
+  private def booleanAttr(name: String): Parser[Boolean] = strAttr(name) >>= {
     case "true" => success(true)
     case "1" => success(true)
     case "false" => success(false)
@@ -186,7 +205,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   private def derivationCtrlAttr[C <: Derivation.Ctrl](name: String)(pf: PartialFunction[String, C]): Parser[Derivation.CtrlSet[C]] = derivationCtrlStr(strAttr(name))(pf)
 
-  def derivationCtrlStr[C <: Derivation.Ctrl](p: Parser[String])(pf: PartialFunction[String, C]): Parser[Derivation.CtrlSet[C]] = p flatMap {
+  def derivationCtrlStr[C <: Derivation.Ctrl](p: Parser[String])(pf: PartialFunction[String, C]): Parser[Derivation.CtrlSet[C]] = p >>= {
     case "#all" => success(Derivation.All)
     case s => {
       Parser.traverse(s.split("\\s+").toList) {

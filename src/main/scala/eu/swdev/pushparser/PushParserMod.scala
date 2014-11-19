@@ -38,6 +38,8 @@ trait PushParserMod { mod =>
       go(run(state))
     })
 
+    def >>=[O1](f: O => Parser[O1]) = flatMap(f)
+
     def filter(f: O => Boolean): Parser[O] = withFilter(f)
 
     def withFilter(f: O => Boolean): Parser[O] = Parser(state => {
