@@ -5,7 +5,7 @@ import javax.xml.stream.{XMLInputFactory, XMLStreamConstants, XMLStreamReader}
 
 import eu.swdev.xml.name._
 import eu.swdev.xml.pushparser.{XmlEventReaderInputs, XmlPushParserMod}
-import eu.swdev.xml.xsd.cmp.{UnionElem, DocumentationElem, AppInfoElem, AnnotationElem}
+import eu.swdev.xml.xsd.cmp._
 import org.scalatest.{FunSuite, Inside}
 
 /**
@@ -170,4 +170,27 @@ class XsdPushParserModTest extends FunSuite with Inside {
     }
 
   }
+
+  test("derivation control") {
+
+    import xsdParsers._
+
+    def parse[C <: Derivation.Ctrl](string: String)(pf: PartialFunction[String, C]) =
+      derivationCtrlStr(success(string))(pf).drive(initialState, Stream.empty)
+
+    inside(parse("#all")(dcExtension orElse dcRestriction)) {
+      case (Some(Derivation.All), _, _, _) =>
+    }
+
+    inside(parse("extension restriction")(dcExtension orElse dcRestriction)) {
+      case (Some(Derivation.CtrlExSet(Derivation.Extension :: Derivation.Restriction :: Nil)), _, _, _) =>
+    }
+
+    inside(parse("restriction extension")(dcExtension orElse dcRestriction)) {
+      case (Some(Derivation.CtrlExSet(Derivation.Restriction :: Derivation.Extension :: Nil)), _, _, _) =>
+    }
+
+
+  }
+
 }

@@ -1,14 +1,15 @@
 package eu.swdev.xml.xsd.parser
 
-import javax.xml.stream.{XMLStreamConstants, XMLStreamReader}
+import java.net.URI
 
 import eu.swdev.xml.base.Location
 import eu.swdev.xml.name._
 import eu.swdev.xml.pushparser.XmlPushParserMod
-import eu.swdev.xml.xsd.cmp.Derivation.ListedElementControls
 import eu.swdev.xml.xsd.cmp._
 import shapeless.ops.hlist.Prepend
-import shapeless.{HList, Generic, HNil, ::}
+import shapeless.{::, Generic, HList, HNil}
+
+import scala.util.{Failure, Success, Try}
 
 trait XsdPushParserMod extends XmlPushParserMod {
 
@@ -37,24 +38,23 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val documentation: Parser[DocumentationElem] = xsElem("documentation")(sourceAttr ~ langAttr ~ rawXml) gmap Generic[DocumentationElem]
 
-  lazy val element: Parser[ElementElem] = xsElem("element")(annotated ~ defRef ~ typeAttr.opt ~ substitutionGroup.opt ~ occurs ~ defaultAttr.opt ~ fixedAttr.opt ~ nillableAttr.opt ~ abstractAttr.opt ~ finalOnElementAttr.opt ~ either(simpleType, complexType).opt ~ alternative.rep ~ identityConstraint.rep) gmap Generic[ElementElem ]
+  lazy val element: Parser[ElementElem] = xsElem("element")(annotated ~ defRef ~ typeAttr.opt ~ substitutionGroup.opt ~ occurs ~ defaultAttr.opt ~ fixedAttr.opt ~ nillableAttr.opt ~ abstractAttr.opt ~ elementFinalAttr.opt ~ elementBlockAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ either(simpleType, complexType).opt ~ alternative.rep ~ identityConstraint.rep) gmap Generic[ElementElem ]
+
+  lazy val elementBlockAttr: Parser[Derivation.CtrlSet[Derivation.ElemBlockCtrl]] = derivationCtrlAttr("block")(dcExtension orElse dcRestriction orElse dcSubstitution)
+
+  lazy val elementFinalAttr: Parser[Derivation.CtrlSet[Derivation.ElemFinalCtrl]] = derivationCtrlAttr("final")(dcExtension orElse dcRestriction)
 
   lazy val facet: Parser[FacetElem] = pattern // TODO
 
   lazy val field: Parser[FieldElem] = xsElem("field")(annotated ~ xPathAttr ~ xPathDefaultNamespaceAttr.opt) gmap Generic[FieldElem]
 
-  lazy val finalOnElementAttr: Parser[Derivation.ElementControlSet] = strAttr("final") flatMap {
-    case "#all" => success(Derivation.All)
-    case s => {
-      Parser.traverse(s.split("\\s+").toList){
-        case "extension" => success(Derivation.Extension)
-        case "restriction" => success(Derivation.Restriction)
-        case x => fail(s"illegal final item: $x")
-      }.map(ListedElementControls(_))
-    }
-  }
-
   lazy val fixedAttr = strAttr("fixed")
+
+  lazy val formAttr = strAttr("form") flatMap {
+    case "qualified" => success(Qualified)
+    case "unqualified" => success(Unqualified)
+    case s => fail(s"invalid form: $s")
+  }
 
   lazy val idAttr: Parser[IdAttrValue] = strAttr("id").opt
 
@@ -82,7 +82,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   }) | success(MaxBounded(1))
 
-  lazy val memberTypes: Parser[List[QName]] = qNamesParser(strAttr("memberTypes"))
+  lazy val memberTypes: Parser[List[QName]] = qNamesAttr("memberTypes")
 
   lazy val minOccursAttr: Parser[Int] = (strAttr("minOccurs") map (_.toInt)) | success(1)
 
@@ -126,7 +126,14 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val sourceAttr: Parser[Option[String]] = optionalAttr(QNameFactory.caching(new LocalName("source")))
 
-  lazy val substitutionGroup: Parser[List[QName]] = qNamesParser(strAttr("substitutionGroup"))
+  lazy val substitutionGroup: Parser[List[QName]] = qNamesAttr("substitutionGroup")
+
+  lazy val targetNamespaceAttr: Parser[URI] = strAttr("targetNamespace") flatMap { s =>
+    Try { new URI(s) } match {
+      case Success(uri) => success(uri)
+      case Failure(ex) => fail(s"invalid target namespace: $s; exception: ${ex.getMessage}")
+    }
+  }
 
   lazy val typeAttr = qnAttr("type")
 
@@ -148,6 +155,14 @@ trait XsdPushParserMod extends XmlPushParserMod {
   //
   //
   //
+
+  val dcExtension: PartialFunction[String, Derivation.Extension.type] = { case "extension" => Derivation.Extension }
+  val dcRestriction: PartialFunction[String, Derivation.Restriction.type] = { case "restriction" => Derivation.Restriction }
+  val dcSubstitution: PartialFunction[String, Derivation.Substitution.type] = { case "substitution" => Derivation.Substitution }
+
+  //
+  //
+  //
   
   private lazy val openAttrsEndElem: Parser[OpenAttrsValue :: HNil] = { val r = openAttrs ~ endElement; r }
 
@@ -159,7 +174,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   private def qnAttr(name: String): Parser[QName] = strAttr(name) flatMap resolveQn
 
-  private def qNamesParser(p: Parser[String]): Parser[List[QName]] = p map (_.split("\\s+").toList) flatMap (Parser.traverse(_)(resolveQn))
+  private def qNamesAttr(name: String): Parser[List[QName]] = strAttr(name) map (_.split("\\s+").toList) flatMap (Parser.traverse(_)(resolveQn))
 
   private def booleanAttr(name: String): Parser[Boolean] = strAttr(name) flatMap {
     case "true" => success(true)
@@ -168,5 +183,18 @@ trait XsdPushParserMod extends XmlPushParserMod {
     case "0" => success(false)
     case s => fail(s"illegal boolean: $s")
   }
+
+  private def derivationCtrlAttr[C <: Derivation.Ctrl](name: String)(pf: PartialFunction[String, C]): Parser[Derivation.CtrlSet[C]] = derivationCtrlStr(strAttr(name))(pf)
+
+  def derivationCtrlStr[C <: Derivation.Ctrl](p: Parser[String])(pf: PartialFunction[String, C]): Parser[Derivation.CtrlSet[C]] = p flatMap {
+    case "#all" => success(Derivation.All)
+    case s => {
+      Parser.traverse(s.split("\\s+").toList) {
+        case s if pf.isDefinedAt(s) => success(pf(s))
+        case s => fail(s"illegal derivation control $s")
+      }
+    }.map(Derivation.CtrlExSet(_))
+  }
+
 
 }

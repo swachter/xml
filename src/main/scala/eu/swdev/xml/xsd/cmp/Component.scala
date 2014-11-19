@@ -1,5 +1,7 @@
 package eu.swdev.xml.xsd.cmp
 
+import java.net.URI
+
 import eu.swdev.xml.base.Location
 import eu.swdev.xml.name.QName
 
@@ -52,7 +54,7 @@ case class ComplexTypeElem()
 
 case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
-case class ElementElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], subsitutionGroup: Option[List[QName]], minOccurs: Int, maxOccurs: MaxOccursToken, default: Option[String], fixed: Option[String], nillable: Option[Boolean], abstr: Option[Boolean], fina: Option[Derivation.ElementControlSet], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], alternatives: Seq[AlternativeElem], constraints: Seq[IdentityConstraintGroupElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
+case class ElementElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], subsitutionGroup: Option[List[QName]], minOccurs: Int, maxOccurs: MaxOccursToken, default: Option[String], fixed: Option[String], nillable: Option[Boolean], abstr: Option[Boolean], finl: Option[Derivation.CtrlSet[Derivation.ElemFinalCtrl]], block: Option[Derivation.CtrlSet[Derivation.ElemBlockCtrl]], form: Option[Form], targetNamespace: Option[URI], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], alternatives: Seq[AlternativeElem], constraints: Seq[IdentityConstraintGroupElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
 
 case class FieldElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[NamespaceToken.XPathDefault], openAttrs: Map[QName, String])
 
@@ -104,12 +106,23 @@ case class MaxBounded(max: Int) extends MaxOccursToken
 
 object Derivation {
 
-  sealed trait ElementControl
-  object Extension extends ElementControl
-  object Restriction extends ElementControl
+  sealed trait Ctrl
+  sealed trait ElemFinalCtrl extends Ctrl
+  sealed trait ElemBlockCtrl extends Ctrl
 
-  sealed trait ElementControlSet
-  object All extends ElementControlSet
-  sealed case class ListedElementControls(list: List[ElementControl]) extends ElementControlSet
+  object Extension extends ElemFinalCtrl with ElemBlockCtrl
+  object Restriction extends ElemFinalCtrl with ElemBlockCtrl
+  object Substitution extends ElemBlockCtrl
+
+  sealed trait CtrlSet[+C <: Ctrl]
   
+  object All extends CtrlSet[Nothing]
+
+  sealed case class CtrlExSet[C <: Ctrl](list: List[C]) extends CtrlSet[C]
+
 }
+
+sealed trait Form
+
+object Qualified extends Form
+object Unqualified extends Form

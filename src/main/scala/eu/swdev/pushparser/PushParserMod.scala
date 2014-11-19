@@ -8,7 +8,7 @@ import scala.collection.immutable.LinearSeq
 
 /**
   */
-trait PushParserMod { self =>
+trait PushParserMod { mod =>
 
   type State
   type Input
@@ -77,7 +77,7 @@ trait PushParserMod { self =>
 
     //
 
-    def drive(initialState: State, inputs: DriveInputs): DriveResult[O] = self.drive(run(initialState), inputs, Nil)
+    def drive(initialState: State, inputs: DriveInputs): DriveResult[O] = mod.drive(run(initialState), inputs, Nil)
 
   }
 
