@@ -58,11 +58,17 @@ case class AlternativeElem(loc: Location, id: Option[String], annotation: Option
 
 case class AnnotationElem(loc: Location, id: Option[String], seq: Seq[Either[AppInfoElem, DocumentationElem]], openAttrs: Map[QName, String]) extends OpenAttrs
 
+case class AnyAttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NsList.Def], notNamespace: Option[List[NsList.Token]], processContent: Option[Pc.Token], notQName: Option[List[QnList.TokenA]], openAttrs: Map[QName, String]) extends NestedParticle
+
 case class AnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NsList.Def], notNamespace: Option[List[NsList.Token]], processContent: Option[Pc.Token], notQName: Option[List[QnList.Token]], minOccurs: Option[Int], maxOccurs: Option[MaxOccursToken], openAttrs: Map[QName, String]) extends NestedParticle
 
 case class AppInfoElem(loc: Location, source: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
-case class AttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], use: Use, default: Option[String], fixed: Option[String], form: Option[Form], targetNamespace: Option[URI], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
+case class AttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], use: Option[Use], default: Option[String], fixed: Option[String], form: Option[Form], targetNamespace: Option[URI], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
+
+case class AttributeGroupDefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, attrs: Seq[Either[AttributeElem, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], openAttrs: Map[QName, String]) extends RedefinableGroupElem
+
+case class AttributeGroupRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], ref: QName, openAttrs: Map[QName, String]) extends NestedParticle
 
 case class ChoiceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], particles: Seq[NestedParticle], openAttrs: Map[QName, String]) extends NestedParticle with InGroupDefParticle
 
@@ -76,7 +82,7 @@ case class FieldElem(loc: Location, id: Option[String], annotation: Option[Annot
 
 case class GroupDefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, particle: InGroupDefParticle, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
-case class GroupRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], ref: QName, openAttrs: Map[QName, String]) extends RedefinableGroupElem with NestedParticle
+case class GroupRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], ref: QName, openAttrs: Map[QName, String]) extends NestedParticle
 
 case class ImportElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: String, namespace: Option[String], openAttrs: Map[QName, String]) extends CompositionGroupElem
 
@@ -119,7 +125,7 @@ object NamespaceToken {
   case object Default extends XPathDefault
   case object Target extends XPathDefault
   case object Local extends XPathDefault
-  sealed case class AnyUri(string: String) extends XPathDefault
+  sealed case class AnyUri(uri: URI) extends XPathDefault
 
 }
 
