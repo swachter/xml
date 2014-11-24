@@ -96,6 +96,8 @@ case class ComplexRestrictionElem(loc: Location, id: Option[String], annotation:
 
 case class ComplexTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], mixed: Option[Boolean], abstrct: Option[Boolean], finl: Option[Derivation.CtrlSet[Derivation.CtFinalCtrl]], block: Option[Derivation.CtrlSet[Derivation.CtBlockCtrl]], defaultAttributesApply: Option[Boolean], content: ComplexTypeContent, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
+case class DefaultOpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], appliesToEmpty: Option[Boolean], mode: Option[DefaultOpenContentMode], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
+
 case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
 case class ElementElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], subsitutionGroup: Option[List[QName]], minOccurs: Option[Int], maxOccurs: Option[MaxOccursToken], default: Option[String], fixed: Option[String], nillable: Option[Boolean], abstr: Option[Boolean], finl: Option[Derivation.CtrlSet[Derivation.ElemFinalCtrl]], block: Option[Derivation.CtrlSet[Derivation.ElemBlockCtrl]], form: Option[Form], targetNamespace: Option[URI], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], alternatives: Seq[AlternativeElem], constraints: Seq[IdentityConstraintGroupElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem with NestedParticle
@@ -128,7 +130,7 @@ case class PatternElem(loc: Location, id: Option[String], annotation: Option[Ann
 
 case class RedefineElem(loc: Location, id: Option[String], schemaLocation: String, redefines: Seq[Either[RedefinableGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
 
-case class SchemaElem(loc: Location, id: Option[String], compositions: Seq[Either[CompositionGroupElem, AnnotationElem]], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends OpenAttrs
+case class SchemaElem(loc: Location, id: Option[String], compositions: Seq[Either[CompositionGroupElem, AnnotationElem]], defaultOpenContent: Option[DefaultOpenContentElem], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends OpenAttrs
 
 case class SelectorElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[NamespaceToken.XPathDefault], openAttrs: Map[QName, String])
 
@@ -233,8 +235,10 @@ object Pc {
 
 sealed trait OpenContentMode
 
+sealed trait DefaultOpenContentMode extends OpenContentMode
+
 object OpenContentMode {
   object None extends OpenContentMode
-  object Interleave extends OpenContentMode
-  object Suffix extends OpenContentMode
+  object Interleave extends DefaultOpenContentMode
+  object Suffix extends DefaultOpenContentMode
 }

@@ -34,6 +34,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val appInfo: Parser[AppInfoElem] = xsElem("appinfo")(sourceAttr ~ rawXml) gmap Generic[AppInfoElem]
 
+  lazy val appliesToEmptyAttr: Parser[Boolean] = booleanAttr("appliesToEmpty")
+
   lazy val assert: Parser[AssertElem] = xsElem("assert")(annotated ~ testAttr.opt ~ xPathDefaultNamespaceAttr.opt) gmap Generic[AssertElem]
 
   lazy val attrDecls = either(attribute, attributeGroupRef).rep ~ anyAttribute.opt
@@ -69,6 +71,14 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val compositionGroupElem: Parser[CompositionGroupElem] = include | importElem | redefine | overrideElem
 
   lazy val defaultAttr: Parser[String] = strAttr("default")
+
+  lazy val defaultOpenContent: Parser[DefaultOpenContentElem] = xsElem("defaultOpenContent")(annotated ~ appliesToEmptyAttr.opt ~ defaultOpenContentModeAttr.opt ~ openContentAny.opt) gmap Generic[DefaultOpenContentElem]
+
+  lazy val defaultOpenContentModeAttr: Parser[DefaultOpenContentMode] = strAttr("mode") >>= {
+    case "interleave" => success(OpenContentMode.Interleave)
+    case "suffix" => success(OpenContentMode.Suffix)
+    case s => fail(s"invalid open content mode: $s")
+  }
 
   lazy val defaultAttributesApplyAttr: Parser[Boolean] = booleanAttr("defaultAttributesApply")
 
@@ -196,7 +206,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val refAttr = qnAttr("ref")
 
-  lazy val schema: Parser[SchemaElem]  = xsElem("schema")(idAttr ~ either(compositionGroupElem, annotation).rep ~ either(schemaTopGroupElem, annotation).rep) gmap Generic[SchemaElem]
+  lazy val schema: Parser[SchemaElem]  = xsElem("schema")(idAttr ~ either(compositionGroupElem, annotation).rep ~ defaultOpenContent.opt ~ either(schemaTopGroupElem, annotation).rep) gmap Generic[SchemaElem]
 
   lazy val schemaLocationAttr: Parser[String] = requiredAttr(QNameFactory.caching(new LocalName("schemaLocation")))
 
