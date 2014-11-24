@@ -1,7 +1,8 @@
 package eu.swdev.xml.pushparser
 
-import java.io.StringWriter
-import javax.xml.stream.XMLEventReader
+import java.io.{StringReader, StringWriter}
+import javax.xml.stream.events.Comment
+import javax.xml.stream.{XMLInputFactory, XMLEventReader}
 
 import eu.swdev.pushparser.PushParserMod
 import eu.swdev.xml.base.{Location, PublicId, ResId, SystemId}
@@ -108,7 +109,8 @@ trait XmlPushParserMod extends PushParserMod {
           } else {
             abort(state, s"can not end element; names differ - event.name: ${e.name}; head: ${startedElements.head}")
           }
-        case i => abort(state, s"can not end element - unexpected input: $i")
+        case Some(i) => abort(state, s"can not end element - unexpected input: $i at position: ${i.location}")
+        case i => abort(state, s"can not end element - missing input: $i")
       }
     }
     case state => abort(state, s"can not end element; no element has started - unexpected parser state: $state")
@@ -261,10 +263,11 @@ trait XmlEventReaderInputs { self: XmlPushParserMod =>
     def go: Stream[je.XMLEvent] = if (reader.hasNext) {
       Stream.cons(reader.nextEvent, go)
     } else {
+      reader.close()
       Stream.empty
     }
 
-    go.filter(e => if (e.isCharacters) !e.asCharacters().isWhiteSpace else true).map(convertEvent(_))
+    go.filter(e => if (e.isCharacters) !e.asCharacters().isWhiteSpace else true).filter(!_.isInstanceOf[Comment]).map(convertEvent(_))
 
   }
 

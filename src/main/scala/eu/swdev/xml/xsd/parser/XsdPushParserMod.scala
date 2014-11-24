@@ -92,7 +92,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val elementFinalAttr: Parser[Derivation.CtrlSet[Derivation.ElemFinalCtrl]] = derivationCtrlAttr("final")(dcExtension orElse dcRestriction)
 
-  lazy val facet: Parser[FacetElem] = pattern // TODO
+  lazy val facet: Parser[FacetElem] = assertion | enumeration | explicitTimezone | fractionDigits | length | maxExclusive | maxInclusive | maxLength | minExclusive | minInclusive | minLength | pattern | totalDigits | whitespace
 
   lazy val field: Parser[FieldElem] = xsElem("field")(annotated ~ xPathAttr ~ xPathDefaultNamespaceAttr.opt) gmap Generic[FieldElem]
 
@@ -155,8 +155,6 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val nillableAttr: Parser[Boolean] = booleanAttr("nillable")
 
-  lazy val noFixedFacet = annotated ~ valueAttr
-
   lazy val notation: Parser[NotationElem] = xsElem("notation")(annotated ~ nameAttr ~ publicAttr.opt ~ systemAttr.opt) gmap Generic[NotationElem]
 
   lazy val notNamespaceAttr: Parser[List[NsList.Token]] = strAttr("notNamespace") map (_.split("\\s+").toList) >>= (Parser.traverse(_)(stringToNsToken))
@@ -188,8 +186,6 @@ trait XsdPushParserMod extends XmlPushParserMod {
   }
 
   lazy val overrideElem: Parser[OverrideElem] = xsElem("override")(idAttr ~ schemaLocationAttr ~ either(schemaTopGroupElem, annotation).rep) gmap Generic[OverrideElem]
-
-  lazy val pattern: Parser[PatternElem] = xsElem("pattern")(noFixedFacet) gmap Generic[PatternElem]
 
   lazy val processContentsAttr: Parser[Pc.Token] = strAttr("processContents") >>= {
     case "skip" => success(Pc.Skip)
@@ -265,6 +261,54 @@ trait XsdPushParserMod extends XmlPushParserMod {
     case "##local" => success(NamespaceToken.Local)
     case s => parseUri.apply(s).map(NamespaceToken.AnyUri(_))
   }
+
+  //
+  // facets
+  //
+
+  def noFixedFacet(name: String) = xsElem(name)(annotated ~ valueAttr)
+
+  def facet(name: String) = xsElem(name)(annotated ~ valueAttr ~ booleanAttr("fixed").opt)
+
+  def facet[X](name: String, bind: String => Parser[X]) = xsElem(name)(annotated ~ (valueAttr >>= bind) ~ booleanAttr("fixed").opt)
+
+  lazy val assertion: Parser[AssertElem] = xsElem("assertion")(annotated ~ testAttr.opt ~ xPathDefaultNamespaceAttr.opt) gmap Generic[AssertElem]
+
+  lazy val explicitTimezone: Parser[ExplicitTimezoneElem] = facet("explicitTimezone", (s: String) => s match {
+    case "optional" => success(ExplicitTimezoneToken.Optional)
+    case "required" => success(ExplicitTimezoneToken.Required)
+    case "prohibited" => success(ExplicitTimezoneToken.Prohibited)
+    case s => fail(s"invalid explicit timezone value: $s")
+  }) gmap Generic[ExplicitTimezoneElem]
+
+  lazy val enumeration: Parser[EnumerationElem] = noFixedFacet("enumeration") gmap Generic[EnumerationElem]
+
+  lazy val fractionDigits: Parser[FractionDigitsElem] = facet("fractionDigits", parseInt) gmap Generic[FractionDigitsElem]
+
+  lazy val length: Parser[LengthElem] = facet("length", parseInt) gmap Generic[LengthElem]
+
+  lazy val maxExclusive: Parser[MaxExclusiveElem] = facet("maxExclusive") gmap Generic[MaxExclusiveElem]
+
+  lazy val maxInclusive: Parser[MaxInclusiveElem] = facet("maxInclusive") gmap Generic[MaxInclusiveElem]
+
+  lazy val maxLength: Parser[MaxLengthElem] = facet("maxLength", parseInt) gmap Generic[MaxLengthElem]
+
+  lazy val minExclusive: Parser[MinExclusiveElem] = facet("minExclusive") gmap Generic[MinExclusiveElem]
+
+  lazy val minInclusive: Parser[MinInclusiveElem] = facet("minInclusive") gmap Generic[MinInclusiveElem]
+
+  lazy val minLength: Parser[MinLengthElem] = facet("minLength", parseInt) gmap Generic[MinLengthElem]
+
+  lazy val pattern: Parser[PatternElem] = noFixedFacet("pattern") gmap Generic[PatternElem]
+
+  lazy val totalDigits: Parser[TotalDigitsElem] = facet("totalDigits", parseInt) gmap Generic[TotalDigitsElem]
+
+  lazy val whitespace: Parser[WhitespaceElem] = facet("whiteSpace", (s: String) => s match {
+    case "preserve" => success(WhitespaceToken.Preserve)
+    case "replace" => success(WhitespaceToken.Replace)
+    case "collapse" => success(WhitespaceToken.Preserve)
+    case s => fail(s"invalid whitepsace facet: $s")
+  }) gmap Generic[WhitespaceElem]
 
   //
   //
