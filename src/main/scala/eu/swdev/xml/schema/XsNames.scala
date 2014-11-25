@@ -1,12 +1,12 @@
-package eu.swdev.xml.xsd
+package eu.swdev.xml.schema
 
 import javax.xml.XMLConstants
 
-import eu.swdev.xml.name.{LocalName, Prefix, Namespace, QNameFactory}
+import eu.swdev.xml.name.{LocalName, Namespace, Prefix, QNameFactory}
 
 /**
   */
-object XsdNames {
+object XsNames {
 
   val XS_NAMESPACE = new Namespace(XMLConstants.W3C_XML_SCHEMA_NS_URI)
   val XS_PREFIX = new Prefix("xs")

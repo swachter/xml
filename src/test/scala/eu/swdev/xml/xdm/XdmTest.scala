@@ -1,7 +1,7 @@
 package eu.swdev.xml.xdm
 
 import eu.swdev.xml.name.{LocalName, QNameFactory, Namespaces}
-import eu.swdev.xml.xsd._
+import eu.swdev.xml.schema._
 import org.scalatest.FunSuite
 
 /**

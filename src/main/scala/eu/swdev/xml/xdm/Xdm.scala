@@ -2,7 +2,7 @@ package eu.swdev.xml.xdm
 
 import eu.swdev.xml.base.WhitespaceProcessing
 import eu.swdev.xml.name.Namespaces
-import eu.swdev.xml.xsd._
+import eu.swdev.xml.schema._
 
 import scala.util.Try
 

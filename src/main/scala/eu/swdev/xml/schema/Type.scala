@@ -1,4 +1,4 @@
-package eu.swdev.xml.xsd
+package eu.swdev.xml.schema
 
 import eu.swdev.xml.base.{True, False, Unknown, Ternary}
 import eu.swdev.xml.name._
@@ -163,7 +163,7 @@ object ListType {
   }
 }
 
-import XsdNames._
+import XsNames._
 
 //
 // Built-in types

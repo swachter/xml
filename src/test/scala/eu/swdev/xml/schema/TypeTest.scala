@@ -1,6 +1,6 @@
-package eu.swdev.xml.xsd
+package eu.swdev.xml.schema
 
-import eu.swdev.xml.name.{QName, LocalName}
+import eu.swdev.xml.name.QName
 import org.scalatest.FunSuite
 
 /**
@@ -26,8 +26,8 @@ class TypeTest extends FunSuite {
       override def visit(tpe: StringType, p: Unit): QName = tpe.name
       override def visit(tpe: QNameType, p: Unit): QName = tpe.name
     }
-    assert(anyType.accept(tv, ()) == XsdNames.ANY_TYPE)
-    assert(stringType.accept(tv, ()) == XsdNames.STRING)
+    assert(anyType.accept(tv, ()) == XsNames.ANY_TYPE)
+    assert(stringType.accept(tv, ()) == XsNames.STRING)
 
 
   }

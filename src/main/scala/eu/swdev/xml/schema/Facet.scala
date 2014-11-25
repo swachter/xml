@@ -1,4 +1,4 @@
-package eu.swdev.xml.xsd
+package eu.swdev.xml.schema
 
 import eu.swdev.xml.base.WhitespaceProcessing
 

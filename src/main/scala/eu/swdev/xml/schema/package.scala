@@ -2,9 +2,9 @@ package eu.swdev.xml
 
 /**
   */
-package object xsd {
+package object schema {
 
-  import XsdNames._
+  import XsNames._
 
   val booleanType = BooleanType(BOOLEAN, anyAtomicType)
 
