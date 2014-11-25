@@ -74,9 +74,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val defaultOpenContent: Parser[DefaultOpenContentElem] = xsElem("defaultOpenContent")(annotated ~ appliesToEmptyAttr.opt ~ defaultOpenContentModeAttr.opt ~ openContentAny.opt) gmap Generic[DefaultOpenContentElem]
 
-  lazy val defaultOpenContentModeAttr: Parser[DefaultOpenContentMode] = strAttr("mode") >>= {
-    case "interleave" => success(OpenContentMode.Interleave)
-    case "suffix" => success(OpenContentMode.Suffix)
+  lazy val defaultOpenContentModeAttr: Parser[DefaultOpenContentModeToken] = strAttr("mode") >>= {
+    case "interleave" => success(OpenContentModeToken.Interleave)
+    case "suffix" => success(OpenContentModeToken.Suffix)
     case s => fail(s"invalid open content mode: $s")
   }
 
@@ -98,9 +98,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val fixedAttr = strAttr("fixed")
 
-  lazy val formAttr = strAttr("form") >>= {
-    case "qualified" => success(Qualified)
-    case "unqualified" => success(Unqualified)
+  lazy val formAttr: Parser[FormToken] = strAttr("form") >>= {
+    case "qualified" => success(FormToken.Qualified)
+    case "unqualified" => success(FormToken.Unqualified)
     case s => fail(s"invalid form: $s")
   }
 
@@ -131,8 +131,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val list: Parser[ListElem] = xsElem("list")(annotated ~ itemTypeAttr.opt ~ simpleType.opt) gmap Generic[ListElem]
 
   lazy val maxOccursAttr: Parser[MaxOccursToken] = strAttr("maxOccurs") >>= {
-    case "unbounded" => success(Unbounded)
-    case s => parseInt.apply(s).map(MaxBounded(_))
+    case "unbounded" => success(MaxOccursToken.Unbounded)
+    case s => parseInt.apply(s).map(MaxOccursToken.Bounded(_))
   }
 
   lazy val memberTypes: Parser[List[QName]] = qNamesAttr("memberTypes")
@@ -147,27 +147,27 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val namespaceAttr = optionalAttr(QNameFactory.caching(new LocalName("namespace")))
 
-  lazy val namespaceListAttr: Parser[NsList.Def] = strAttr("namespace") >>= {
-    case "##any" => success(NsList.Any)
-    case "##other" => success(NsList.Other)
-    case s => Parser.traverse(s.split("\\s+").toList)(stringToNsToken).map(NsList.ExDef(_))
+  lazy val namespaceListAttr: Parser[NamespaceDefToken] = strAttr("namespace") >>= {
+    case "##any" => success(NamespaceDefToken.Any)
+    case "##other" => success(NamespaceDefToken.Other)
+    case s => Parser.traverse(s.split("\\s+").toList)(stringToNsToken).map(NamespaceDefToken.Items(_))
   }
 
   lazy val nillableAttr: Parser[Boolean] = booleanAttr("nillable")
 
   lazy val notation: Parser[NotationElem] = xsElem("notation")(annotated ~ nameAttr ~ publicAttr.opt ~ systemAttr.opt) gmap Generic[NotationElem]
 
-  lazy val notNamespaceAttr: Parser[List[NsList.Token]] = strAttr("notNamespace") map (_.split("\\s+").toList) >>= (Parser.traverse(_)(stringToNsToken))
+  lazy val notNamespaceAttr: Parser[List[NamespaceItemToken]] = strAttr("notNamespace") map (_.split("\\s+").toList) >>= (Parser.traverse(_)(stringToNsToken))
 
-  lazy val notQNameAttr: Parser[List[QnList.Token]] = strAttr("notQName") map (_.split("\\s+").toList) >>= (Parser.traverse(_) {
-    case "##defined" => success(QnList.Defined)
-    case "##definedSibling" => success(QnList.DefinedSibling)
-    case s => resolveQn(s).map(QnList.QnItem(_))
+  lazy val notQNameAttr: Parser[List[QNameItemToken]] = strAttr("notQName") map (_.split("\\s+").toList) >>= (Parser.traverse(_) {
+    case "##defined" => success(QNameItemToken.Defined)
+    case "##definedSibling" => success(QNameItemToken.DefinedSibling)
+    case s => resolveQn(s).map(QNameItemToken.Qn(_))
   })
 
-  lazy val notQNameAttrA: Parser[List[QnList.TokenA]] = strAttr("notQName") map (_.split("\\s+").toList) >>= (Parser.traverse(_) {
-    case "##defined" => success(QnList.Defined)
-    case s => resolveQn(s).map(QnList.QnItem(_))
+  lazy val notQNameAttrA: Parser[List[QNameItemTokenA]] = strAttr("notQName") map (_.split("\\s+").toList) >>= (Parser.traverse(_) {
+    case "##defined" => success(QNameItemToken.Defined)
+    case s => resolveQn(s).map(QNameItemToken.Qn(_))
   })
 
   lazy val occurs = minOccursAttr.opt ~ maxOccursAttr.opt
@@ -178,19 +178,19 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val openContentAny: Parser[OpenContentAnyElem] = xsElem("any")(annotated ~ anyAttrGroup) gmap Generic[OpenContentAnyElem]
 
-  lazy val openContentModeAttr: Parser[OpenContentMode] = strAttr("mode") >>= {
-    case "none" => success(OpenContentMode.None)
-    case "interleave" => success(OpenContentMode.Interleave)
-    case "suffix" => success(OpenContentMode.Suffix)
+  lazy val openContentModeAttr: Parser[OpenContentModeToken] = strAttr("mode") >>= {
+    case "none" => success(OpenContentModeToken.None)
+    case "interleave" => success(OpenContentModeToken.Interleave)
+    case "suffix" => success(OpenContentModeToken.Suffix)
     case s => fail(s"invalid open content mode: $s")
   }
 
   lazy val overrideElem: Parser[OverrideElem] = xsElem("override")(idAttr ~ schemaLocationAttr ~ either(schemaTopGroupElem, annotation).rep) gmap Generic[OverrideElem]
 
-  lazy val processContentsAttr: Parser[Pc.Token] = strAttr("processContents") >>= {
-    case "skip" => success(Pc.Skip)
-    case "lax" => success(Pc.Lax)
-    case "strict" => success(Pc.Strict)
+  lazy val processContentsAttr: Parser[ProcessContentsToken] = strAttr("processContents") >>= {
+    case "skip" => success(ProcessContentsToken.Skip)
+    case "lax" => success(ProcessContentsToken.Lax)
+    case "strict" => success(ProcessContentsToken.Strict)
     case s => fail(s"invalid process contents value: $s")
   }
 
@@ -244,10 +244,10 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val unique: Parser[UniqueElem] = xsElem("unique")(keybase) gmap Generic[UniqueElem]
 
-  lazy val useAttr: Parser[Use] = strAttr("use") >>= {
-    case "optional" => success(Optional)
-    case "required" => success(Required)
-    case "prohibited" => success(Prohibited)
+  lazy val useAttr: Parser[UseToken] = strAttr("use") >>= {
+    case "optional" => success(UseToken.Optional)
+    case "required" => success(UseToken.Required)
+    case "prohibited" => success(UseToken.Prohibited)
     case s => fail(s"invalid use attribute: $s")
   }
 
@@ -255,11 +255,11 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val xPathAttr: Parser[String] = strAttr("xpath")
 
-  lazy val xPathDefaultNamespaceAttr: Parser[NamespaceToken.XPathDefault] = strAttr("xpathDefaultNamespace") >>= {
-    case "##defaultNamespace" => success(NamespaceToken.Default)
-    case "##targetNamespace" => success(NamespaceToken.Target)
-    case "##local" => success(NamespaceToken.Local)
-    case s => parseUri.apply(s).map(NamespaceToken.AnyUri(_))
+  lazy val xPathDefaultNamespaceAttr: Parser[XPathDefaultNamespaceToken] = strAttr("xpathDefaultNamespace") >>= {
+    case "##defaultNamespace" => success(XPathDefaultNamespaceToken.Default)
+    case "##targetNamespace" => success(XPathDefaultNamespaceToken.Target)
+    case "##local" => success(XPathDefaultNamespaceToken.Local)
+    case s => parseUri.apply(s).map(XPathDefaultNamespaceToken.AnyUri(_))
   }
 
   //
@@ -360,10 +360,10 @@ trait XsdPushParserMod extends XmlPushParserMod {
     }.map(Derivation.CtrlExSet(_))
   }
 
-  private def stringToNsToken(string: String): Parser[NsList.Token] = string match {
-    case "##targetNamespace" => success(NsList.TargetNamespace)
-    case "##local" => success(NsList.Local)
-    case s => parseUri.apply(s).map(NsList.UriItem(_))
+  private def stringToNsToken(string: String): Parser[NamespaceItemToken] = string match {
+    case "##targetNamespace" => success(NamespaceItemToken.TargetNamespace)
+    case "##local" => success(NamespaceItemToken.Local)
+    case s => parseUri.apply(s).map(NamespaceItemToken.Uri(_))
   }
 
   implicit class FunctionOps[I, O](f: I => O) {

@@ -66,17 +66,17 @@ sealed trait ComplexContent extends ComplexTypeContent
 
 case class AllElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], particles: Seq[NestedParticle], openAttrs: Map[QName, String]) extends InGroupDefParticle with TypeDefParticle
 
-case class AlternativeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: Option[String], refType: Option[QName], xPathDefaultNamespace: Option[NamespaceToken.XPathDefault], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], openAttrs: Map[QName, String])
+case class AlternativeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: Option[String], refType: Option[QName], xPathDefaultNamespace: Option[XPathDefaultNamespaceToken], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], openAttrs: Map[QName, String])
 
 case class AnnotationElem(loc: Location, id: Option[String], seq: Seq[Either[AppInfoElem, DocumentationElem]], openAttrs: Map[QName, String]) extends OpenAttrs
 
-case class AnyAttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NsList.Def], notNamespace: Option[List[NsList.Token]], processContent: Option[Pc.Token], notQName: Option[List[QnList.TokenA]], openAttrs: Map[QName, String]) extends NestedParticle
+case class AnyAttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContent: Option[ProcessContentsToken], notQName: Option[List[QNameItemTokenA]], openAttrs: Map[QName, String]) extends NestedParticle
 
-case class AnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NsList.Def], notNamespace: Option[List[NsList.Token]], processContent: Option[Pc.Token], notQName: Option[List[QnList.Token]], minOccurs: Option[Int], maxOccurs: Option[MaxOccursToken], openAttrs: Map[QName, String]) extends NestedParticle
+case class AnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContent: Option[ProcessContentsToken], notQName: Option[List[QNameItemToken]], minOccurs: Option[Int], maxOccurs: Option[MaxOccursToken], openAttrs: Map[QName, String]) extends NestedParticle
 
 case class AppInfoElem(loc: Location, source: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
-case class AttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], use: Option[Use], default: Option[String], fixed: Option[String], form: Option[Form], targetNamespace: Option[URI], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
+case class AttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], use: Option[UseToken], default: Option[String], fixed: Option[String], form: Option[FormToken], targetNamespace: Option[URI], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
 
 case class AttributeGroupDefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, attrs: Seq[Either[AttributeElem, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
@@ -94,13 +94,13 @@ case class ComplexRestrictionElem(loc: Location, id: Option[String], annotation:
 
 case class ComplexTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], mixed: Option[Boolean], abstrct: Option[Boolean], finl: Option[Derivation.CtrlSet[Derivation.CtFinalCtrl]], block: Option[Derivation.CtrlSet[Derivation.CtBlockCtrl]], defaultAttributesApply: Option[Boolean], content: ComplexTypeContent, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
-case class DefaultOpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], appliesToEmpty: Option[Boolean], mode: Option[DefaultOpenContentMode], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
+case class DefaultOpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], appliesToEmpty: Option[Boolean], mode: Option[DefaultOpenContentModeToken], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
 
 case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
-case class ElementElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], subsitutionGroup: Option[List[QName]], minOccurs: Option[Int], maxOccurs: Option[MaxOccursToken], default: Option[String], fixed: Option[String], nillable: Option[Boolean], abstr: Option[Boolean], finl: Option[Derivation.CtrlSet[Derivation.ElemFinalCtrl]], block: Option[Derivation.CtrlSet[Derivation.ElemBlockCtrl]], form: Option[Form], targetNamespace: Option[URI], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], alternatives: Seq[AlternativeElem], constraints: Seq[IdentityConstraintGroupElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem with NestedParticle
+case class ElementElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], subsitutionGroup: Option[List[QName]], minOccurs: Option[Int], maxOccurs: Option[MaxOccursToken], default: Option[String], fixed: Option[String], nillable: Option[Boolean], abstr: Option[Boolean], finl: Option[Derivation.CtrlSet[Derivation.ElemFinalCtrl]], block: Option[Derivation.CtrlSet[Derivation.ElemBlockCtrl]], form: Option[FormToken], targetNamespace: Option[URI], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], alternatives: Seq[AlternativeElem], constraints: Seq[IdentityConstraintGroupElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem with NestedParticle
 
-case class FieldElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[NamespaceToken.XPathDefault], openAttrs: Map[QName, String])
+case class FieldElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[XPathDefaultNamespaceToken], openAttrs: Map[QName, String])
 
 case class GroupDefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, particle: InGroupDefParticle, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
@@ -118,9 +118,9 @@ case class ListElem(loc: Location, id: Option[String], annotation: Option[Annota
 
 case class NotationElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, publ: Option[String], system: Option[URI], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
 
-case class OpenContentAnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NsList.Def], notNamespace: Option[List[NsList.Token]], processContent: Option[Pc.Token], openAttrs: Map[QName, String])
+case class OpenContentAnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContent: Option[ProcessContentsToken], openAttrs: Map[QName, String])
 
-case class OpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mode: Option[OpenContentMode], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
+case class OpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mode: Option[OpenContentModeToken], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
 
 case class OverrideElem(loc: Location, id: Option[String], schemaLocation: String, overrides: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
 
@@ -128,7 +128,7 @@ case class RedefineElem(loc: Location, id: Option[String], schemaLocation: Strin
 
 case class SchemaElem(loc: Location, id: Option[String], compositions: Seq[Either[CompositionGroupElem, AnnotationElem]], defaultOpenContent: Option[DefaultOpenContentElem], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends OpenAttrs
 
-case class SelectorElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[NamespaceToken.XPathDefault], openAttrs: Map[QName, String])
+case class SelectorElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[XPathDefaultNamespaceToken], openAttrs: Map[QName, String])
 
 case class SequenceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], particles: Seq[NestedParticle], openAttrs: Map[QName, String]) extends NestedParticle with InGroupDefParticle with TypeDefParticle
 
@@ -148,7 +148,7 @@ case class UnionElem(loc: Location, id: Option[String], annotation: Option[Annot
 
 //
 
-case class AssertElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: Option[String], xPathDefaultNamespace: Option[NamespaceToken.XPathDefault], openAttrs: Map[QName, String]) extends FacetElem
+case class AssertElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: Option[String], xPathDefaultNamespace: Option[XPathDefaultNamespaceToken], openAttrs: Map[QName, String]) extends FacetElem
 
 case class ExplicitTimezoneElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: ExplicitTimezoneToken, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
 
@@ -178,21 +178,23 @@ case class WhitespaceElem(loc: Location, id: Option[String], annotation: Option[
 
 //
 
-object NamespaceToken {
+sealed trait XPathDefaultNamespaceToken
 
-  sealed trait XPathDefault
+object XPathDefaultNamespaceToken {
 
-  case object Default extends XPathDefault
-  case object Target extends XPathDefault
-  case object Local extends XPathDefault
-  sealed case class AnyUri(uri: URI) extends XPathDefault
+  case object Default extends XPathDefaultNamespaceToken
+  case object Target extends XPathDefaultNamespaceToken
+  case object Local extends XPathDefaultNamespaceToken
+  sealed case class AnyUri(uri: URI) extends XPathDefaultNamespaceToken
 
 }
 
 sealed trait MaxOccursToken
 
-case object Unbounded extends MaxOccursToken
-case class MaxBounded(max: Int) extends MaxOccursToken
+object MaxOccursToken {
+  case object Unbounded extends MaxOccursToken
+  case class Bounded(max: Int) extends MaxOccursToken
+}
 
 object Derivation {
 
@@ -214,59 +216,65 @@ object Derivation {
 
 }
 
-sealed trait Form
+sealed trait FormToken
 
-object Qualified extends Form
-object Unqualified extends Form
-
-sealed trait Use
-
-object Optional extends Use
-object Required extends Use
-object Prohibited extends Use
-
-object QnList {
-
-  sealed trait Token // xs:qnameList
-
-  sealed trait TokenA extends Token // xs:qnameListA
-
-  sealed case class QnItem(qn: QName) extends TokenA
-
-  object Defined extends TokenA
-  object DefinedSibling extends Token
+object FormToken {
+  object Qualified extends FormToken
+  object Unqualified extends FormToken
 }
 
-object NsList {
+sealed trait UseToken
 
-  sealed trait Token
-
-  object TargetNamespace extends Token
-  object Local extends Token
-
-  sealed case class UriItem(uri: URI) extends Token
-  
-  sealed trait Def
-  object Any extends Def
-  object Other extends Def
-  sealed case class ExDef(list: List[Token]) extends Def
+object UseToken {
+  object Optional extends UseToken
+  object Required extends UseToken
+  object Prohibited extends UseToken
 }
 
-object Pc {
-  trait Token
-  object Skip extends Token
-  object Lax extends Token
-  object Strict extends Token
+sealed trait QNameItemToken // xs:qnameList
+
+sealed trait QNameItemTokenA extends QNameItemToken // xs:qnameListA
+
+object QNameItemToken {
+
+  sealed case class Qn(qn: QName) extends QNameItemTokenA
+
+  object Defined extends QNameItemTokenA
+  object DefinedSibling extends QNameItemToken
 }
 
-sealed trait OpenContentMode
+sealed trait NamespaceItemToken
 
-sealed trait DefaultOpenContentMode extends OpenContentMode
+object NamespaceItemToken {
+  object TargetNamespace extends NamespaceItemToken
+  object Local extends NamespaceItemToken
+  sealed case class Uri(uri: URI) extends NamespaceItemToken
+}
 
-object OpenContentMode {
-  object None extends OpenContentMode
-  object Interleave extends DefaultOpenContentMode
-  object Suffix extends DefaultOpenContentMode
+sealed trait NamespaceDefToken
+
+object NamespaceDefToken {
+  object Any extends NamespaceDefToken
+  object Other extends NamespaceDefToken
+  sealed case class Items(list: List[NamespaceItemToken]) extends NamespaceDefToken
+}
+
+trait ProcessContentsToken
+
+object ProcessContentsToken {
+  object Skip extends ProcessContentsToken
+  object Lax extends ProcessContentsToken
+  object Strict extends ProcessContentsToken
+}
+
+sealed trait OpenContentModeToken
+
+sealed trait DefaultOpenContentModeToken extends OpenContentModeToken
+
+object OpenContentModeToken {
+  object None extends OpenContentModeToken
+  object Interleave extends DefaultOpenContentModeToken
+  object Suffix extends DefaultOpenContentModeToken
 }
 
 trait WhitespaceToken
