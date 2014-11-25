@@ -18,7 +18,7 @@ package object schema {
 
   val intType = IntType(INT, longType)
 
-  val stringType = StringType(STRING, anyAtomicType, WhitespaceFacet.PRESERVER_UNFIXED)
+  val stringType = StringType(STRING, anyAtomicType, WhitespaceFacet.PRESERVE_UNFIXED)
 
   val qNameType = QNameType(QNAME, anyAtomicType)
 

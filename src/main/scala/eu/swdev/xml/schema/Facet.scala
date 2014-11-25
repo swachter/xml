@@ -9,5 +9,5 @@ case class WhitespaceFacet(whitespaceProcess: WhitespaceProcessing, fixed: Boole
 object WhitespaceFacet {
 
   val COLLAPSE_FIXED = WhitespaceFacet(WhitespaceProcessing.Collapse, true)
-  val PRESERVER_UNFIXED = WhitespaceFacet(WhitespaceProcessing.Preserve, false)
+  val PRESERVE_UNFIXED = WhitespaceFacet(WhitespaceProcessing.Preserve, false)
 }

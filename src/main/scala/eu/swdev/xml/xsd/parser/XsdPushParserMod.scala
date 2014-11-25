@@ -2,9 +2,10 @@ package eu.swdev.xml.xsd.parser
 
 import java.net.URI
 
-import eu.swdev.xml.base.Location
+import eu.swdev.xml.base.{WhitespaceProcessing, Location}
 import eu.swdev.xml.name._
 import eu.swdev.xml.pushparser.XmlPushParserMod
+import eu.swdev.xml.schema._
 import eu.swdev.xml.xsd.cmp._
 import shapeless.ops.hlist.Prepend
 import shapeless.{::, Generic, HList, HNil}
@@ -62,9 +63,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val complexType: Parser[ComplexTypeElem] = xsElem("complexType")(annotated ~ nameAttr.opt ~ mixedAttr.opt ~ abstractAttr.opt ~ complexTypeFinalAttr.opt ~ complexTypeBlockAttr.opt ~ defaultAttributesApplyAttr.opt ~ complexTypeContent) gmap Generic[ComplexTypeElem]
 
-  lazy val complexTypeBlockAttr: Parser[Derivation.CtrlSet[Derivation.CtBlockCtrl]] = derivationCtrlAttr("block")(dcExtension orElse dcRestriction)
+  lazy val complexTypeBlockAttr: Parser[RelationSet[CtBlockCtrl]] = derivationCtrlAttr("block")(dcExtension orElse dcRestriction)
 
-  lazy val complexTypeFinalAttr: Parser[Derivation.CtrlSet[Derivation.CtFinalCtrl]] = derivationCtrlAttr("final")(dcExtension orElse dcRestriction)
+  lazy val complexTypeFinalAttr: Parser[RelationSet[CtFinalCtrl]] = derivationCtrlAttr("final")(dcExtension orElse dcRestriction)
 
   lazy val complexTypeContent: Parser[ComplexTypeContent] = simpleContent | complexContent | complexContentAbbrev
 
@@ -88,9 +89,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val element: Parser[ElementElem] = xsElem("element")(annotated ~ defRef ~ typeAttr.opt ~ substitutionGroup.opt ~ occurs ~ defaultAttr.opt ~ fixedAttr.opt ~ nillableAttr.opt ~ abstractAttr.opt ~ elementFinalAttr.opt ~ elementBlockAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ either(simpleType, complexType).opt ~ alternative.rep ~ identityConstraint.rep) gmap Generic[ElementElem ]
 
-  lazy val elementBlockAttr: Parser[Derivation.CtrlSet[Derivation.ElemBlockCtrl]] = derivationCtrlAttr("block")(dcExtension orElse dcRestriction orElse dcSubstitution)
+  lazy val elementBlockAttr: Parser[RelationSet[ElemBlockCtrl]] = derivationCtrlAttr("block")(dcExtension orElse dcRestriction orElse dcSubstitution)
 
-  lazy val elementFinalAttr: Parser[Derivation.CtrlSet[Derivation.ElemFinalCtrl]] = derivationCtrlAttr("final")(dcExtension orElse dcRestriction)
+  lazy val elementFinalAttr: Parser[RelationSet[ElemFinalCtrl]] = derivationCtrlAttr("final")(dcExtension orElse dcRestriction)
 
   lazy val facet: Parser[FacetElem] = assertion | enumeration | explicitTimezone | fractionDigits | length | maxExclusive | maxInclusive | maxLength | minExclusive | minInclusive | minLength | pattern | totalDigits | whitespace
 
@@ -98,9 +99,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val fixedAttr = strAttr("fixed")
 
-  lazy val formAttr: Parser[FormToken] = strAttr("form") >>= {
-    case "qualified" => success(FormToken.Qualified)
-    case "unqualified" => success(FormToken.Unqualified)
+  lazy val formAttr: Parser[Form] = strAttr("form") >>= {
+    case "qualified" => success(Form.Qualified)
+    case "unqualified" => success(Form.Unqualified)
     case s => fail(s"invalid form: $s")
   }
 
@@ -130,9 +131,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val list: Parser[ListElem] = xsElem("list")(annotated ~ itemTypeAttr.opt ~ simpleType.opt) gmap Generic[ListElem]
 
-  lazy val maxOccursAttr: Parser[MaxOccursToken] = strAttr("maxOccurs") >>= {
-    case "unbounded" => success(MaxOccursToken.Unbounded)
-    case s => parseInt.apply(s).map(MaxOccursToken.Bounded(_))
+  lazy val maxOccursAttr: Parser[MaxOccurs] = strAttr("maxOccurs") >>= {
+    case "unbounded" => success(MaxOccurs.Unbounded)
+    case s => parseInt.apply(s).map(MaxOccurs.Bounded(_))
   }
 
   lazy val memberTypes: Parser[List[QName]] = qNamesAttr("memberTypes")
@@ -159,15 +160,15 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val notNamespaceAttr: Parser[List[NamespaceItemToken]] = strAttr("notNamespace") map (_.split("\\s+").toList) >>= (Parser.traverse(_)(stringToNsToken))
 
-  lazy val notQNameAttr: Parser[List[QNameItemToken]] = strAttr("notQName") map (_.split("\\s+").toList) >>= (Parser.traverse(_) {
-    case "##defined" => success(QNameItemToken.Defined)
-    case "##definedSibling" => success(QNameItemToken.DefinedSibling)
-    case s => resolveQn(s).map(QNameItemToken.Qn(_))
+  lazy val notQNameAttr: Parser[List[QNameItem]] = strAttr("notQName") map (_.split("\\s+").toList) >>= (Parser.traverse(_) {
+    case "##defined" => success(QNameItem.Defined)
+    case "##definedSibling" => success(QNameItem.DefinedSibling)
+    case s => resolveQn(s).map(QNameItem.Qn(_))
   })
 
-  lazy val notQNameAttrA: Parser[List[QNameItemTokenA]] = strAttr("notQName") map (_.split("\\s+").toList) >>= (Parser.traverse(_) {
-    case "##defined" => success(QNameItemToken.Defined)
-    case s => resolveQn(s).map(QNameItemToken.Qn(_))
+  lazy val notQNameAttrA: Parser[List[QNameItemA]] = strAttr("notQName") map (_.split("\\s+").toList) >>= (Parser.traverse(_) {
+    case "##defined" => success(QNameItem.Defined)
+    case s => resolveQn(s).map(QNameItem.Qn(_))
   })
 
   lazy val occurs = minOccursAttr.opt ~ maxOccursAttr.opt
@@ -187,10 +188,10 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val overrideElem: Parser[OverrideElem] = xsElem("override")(idAttr ~ schemaLocationAttr ~ either(schemaTopGroupElem, annotation).rep) gmap Generic[OverrideElem]
 
-  lazy val processContentsAttr: Parser[ProcessContentsToken] = strAttr("processContents") >>= {
-    case "skip" => success(ProcessContentsToken.Skip)
-    case "lax" => success(ProcessContentsToken.Lax)
-    case "strict" => success(ProcessContentsToken.Strict)
+  lazy val processContentsAttr: Parser[ProcessContents] = strAttr("processContents") >>= {
+    case "skip" => success(ProcessContents.Skip)
+    case "lax" => success(ProcessContents.Lax)
+    case "strict" => success(ProcessContents.Strict)
     case s => fail(s"invalid process contents value: $s")
   }
 
@@ -244,10 +245,10 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val unique: Parser[UniqueElem] = xsElem("unique")(keybase) gmap Generic[UniqueElem]
 
-  lazy val useAttr: Parser[UseToken] = strAttr("use") >>= {
-    case "optional" => success(UseToken.Optional)
-    case "required" => success(UseToken.Required)
-    case "prohibited" => success(UseToken.Prohibited)
+  lazy val useAttr: Parser[Use] = strAttr("use") >>= {
+    case "optional" => success(Use.Optional)
+    case "required" => success(Use.Required)
+    case "prohibited" => success(Use.Prohibited)
     case s => fail(s"invalid use attribute: $s")
   }
 
@@ -255,11 +256,11 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val xPathAttr: Parser[String] = strAttr("xpath")
 
-  lazy val xPathDefaultNamespaceAttr: Parser[XPathDefaultNamespaceToken] = strAttr("xpathDefaultNamespace") >>= {
-    case "##defaultNamespace" => success(XPathDefaultNamespaceToken.Default)
-    case "##targetNamespace" => success(XPathDefaultNamespaceToken.Target)
-    case "##local" => success(XPathDefaultNamespaceToken.Local)
-    case s => parseUri.apply(s).map(XPathDefaultNamespaceToken.AnyUri(_))
+  lazy val xPathDefaultNamespaceAttr: Parser[XPathDefaultNamespace] = strAttr("xpathDefaultNamespace") >>= {
+    case "##defaultNamespace" => success(XPathDefaultNamespace.Default)
+    case "##targetNamespace" => success(XPathDefaultNamespace.Target)
+    case "##local" => success(XPathDefaultNamespace.Local)
+    case s => parseUri.apply(s).map(XPathDefaultNamespace.Uri(_))
   }
 
   //
@@ -275,9 +276,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val assertion: Parser[AssertElem] = xsElem("assertion")(annotated ~ testAttr.opt ~ xPathDefaultNamespaceAttr.opt) gmap Generic[AssertElem]
 
   lazy val explicitTimezone: Parser[ExplicitTimezoneElem] = facet("explicitTimezone", (s: String) => s match {
-    case "optional" => success(ExplicitTimezoneToken.Optional)
-    case "required" => success(ExplicitTimezoneToken.Required)
-    case "prohibited" => success(ExplicitTimezoneToken.Prohibited)
+    case "optional" => success(ExplicitTimezone.Optional)
+    case "required" => success(ExplicitTimezone.Required)
+    case "prohibited" => success(ExplicitTimezone.Prohibited)
     case s => fail(s"invalid explicit timezone value: $s")
   }) gmap Generic[ExplicitTimezoneElem]
 
@@ -304,9 +305,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val totalDigits: Parser[TotalDigitsElem] = facet("totalDigits", parseInt) gmap Generic[TotalDigitsElem]
 
   lazy val whitespace: Parser[WhitespaceElem] = facet("whiteSpace", (s: String) => s match {
-    case "preserve" => success(WhitespaceToken.Preserve)
-    case "replace" => success(WhitespaceToken.Replace)
-    case "collapse" => success(WhitespaceToken.Preserve)
+    case "preserve" => success(WhitespaceProcessing.Preserve)
+    case "replace" => success(WhitespaceProcessing.Replace)
+    case "collapse" => success(WhitespaceProcessing.Preserve)
     case s => fail(s"invalid whitepsace facet: $s")
   }) gmap Generic[WhitespaceElem]
 
@@ -314,9 +315,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
   //
   //
 
-  val dcExtension: PartialFunction[String, Derivation.Extension.type] = { case "extension" => Derivation.Extension }
-  val dcRestriction: PartialFunction[String, Derivation.Restriction.type] = { case "restriction" => Derivation.Restriction }
-  val dcSubstitution: PartialFunction[String, Derivation.Substitution.type] = { case "substitution" => Derivation.Substitution }
+  val dcExtension: PartialFunction[String, Relation.Extension.type] = { case "extension" => Relation.Extension }
+  val dcRestriction: PartialFunction[String, Relation.Restriction.type] = { case "restriction" => Relation.Restriction }
+  val dcSubstitution: PartialFunction[String, Relation.Substitution.type] = { case "substitution" => Relation.Substitution }
 
   //
   //
@@ -348,16 +349,16 @@ trait XsdPushParserMod extends XmlPushParserMod {
     case s => fail(s"illegal boolean: $s")
   }
 
-  private def derivationCtrlAttr[C <: Derivation.Ctrl](name: String)(pf: PartialFunction[String, C]): Parser[Derivation.CtrlSet[C]] = derivationCtrlStr(strAttr(name))(pf)
+  private def derivationCtrlAttr[R <: Relation](name: String)(pf: PartialFunction[String, R]): Parser[RelationSet[R]] = derivationCtrlStr(strAttr(name))(pf)
 
-  def derivationCtrlStr[C <: Derivation.Ctrl](p: Parser[String])(pf: PartialFunction[String, C]): Parser[Derivation.CtrlSet[C]] = p >>= {
-    case "#all" => success(Derivation.All)
+  def derivationCtrlStr[R <: Relation](p: Parser[String])(pf: PartialFunction[String, R]): Parser[RelationSet[R]] = p >>= {
+    case "#all" => success(RelationSet.All)
     case s => {
       Parser.traverse(s.split("\\s+").toList) {
         case s if pf.isDefinedAt(s) => success(pf(s))
         case s => fail(s"illegal derivation control $s")
       }
-    }.map(Derivation.CtrlExSet(_))
+    }.map(RelationSet.Items(_))
   }
 
   private def stringToNsToken(string: String): Parser[NamespaceItemToken] = string match {
