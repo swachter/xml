@@ -10,67 +10,62 @@ import eu.swdev.xml.xsd.cmp._
 
 trait JobMod {
 
-  case class Job[A](run: (JobConfig, JobLog) => (A, JobLog)) { self =>
+  case class Job[A](run: State => Step[A]) { self =>
 
-    def map[B](f: A => B): Job[B] = Job { (conf, log) =>
-      val (a, l) = self.run(conf, log)
-      (f(a), l)
+    def map[B](f: A => B): Job[B] = Job { state => run(state) map f }
+
+    def flatMap[B](f: A => Job[B]): Job[B] = Job { state =>
+
+      def go(step: Step[A]): Step[B] = step match {
+        case Await(name, symbolSpace, rec) => Await(name, symbolSpace, rec andThen go)
+        case Done(a, s1) => f(a).run(s1)
+        case Abort(state) => Abort(state)
+        case Created(o, next) => Created(o, go(next))
+      }
+
+      go(run(state))
     }
 
   }
-  
-  trait Step[C] {
-    
-    def map[D](f: C => D): Step[D] = this match {
-      case Await(name, symbolSpace, rec) => Await(name, symbolSpace, mapReceive(rec, f))
-      case Done(value, log) => Done(f(value), log)
-      case Abort(log) => Abort(log)
-      case Created(value, next) => Created(value, next map f)
-    }
-    
-    def flatMap[D](f: C => Step[D]): Step[D] = this match {
-      case Await(name, symbolSpace, rec) => Await(name, symbolSpace, flatMapReceive(rec, f))
-      case Done(value, log) => f(value) prependLog log
-      case Abort(log) => Abort(log)
-      case Created(value, next) => Created(value, next flatMap f)
-      
-    }
-    
-    private def prependLog(log: JobLog): Step[C] = this match {
-      case Await(name, symbolSpace, rec) => Await(name, symbolSpace, prependReceive(rec, log))
-      case Done(value, l) => Done(value, concatLog(log, l))
-      case Abort(l) => Abort(concatLog(log, l))
-      case Created(value, next) => Created(value, next prependLog log)
-    }
 
-    private def mapReceive[X, D](rec: Option[X] => Step[C], f: C => D): Option[X] => Step[D] = ox => rec(ox) map f
-    private def flatMapReceive[X, D](rec: Option[X] => Step[C], f: C => Step[D]): Option[X] => Step[D] = ox => rec(ox) flatMap f
-    private def prependReceive[X](rec: Option[X] => Step[C], log: JobLog): Option[X] => Step[C] = ox => rec(ox) prependLog log
+  //private def goRec
 
-  }
+  object Job {
 
+    def unit[A](a: A) = Job { state => Done(a, state) }
 
-  case class Await[C, X](name: QName, symbolSpace: SymbolSpace[X], rec: Option[X] => Step[C]) extends Step[C]
-
-  case class Done[C](value: C, log: JobLog) extends Step[C]
-
-  case class Abort[C](log: JobLog) extends Step[C]
-  
-  case class Created[C](value: ComplexType, next: Step[C]) extends Step[C]
-  
-  object Step {
-
-    def unit[A](a: A): Step[A] = Done(a, emptyJobLog)
-
-    def map2[A, B, C](ja: Step[A], jb: Step[B])(f: (A, B) => C): Step[C] = for {
+    def map2[A, B, C](ja: Job[A], jb: Job[B])(f: (A, B) => C): Job[C] = for {
       a <- ja
       b <- jb
     } yield f(a, b)
 
-    def sequence[A](seq: Seq[Step[A]]): Step[Seq[A]] = seq.foldRight(unit(Seq[A]()))((job, acc) => map2(job, acc)(_ +: _))
+    def sequence[A](seq: Seq[Job[A]]): Job[Seq[A]] = seq.foldRight(unit(Seq[A]()))((job, acc) => map2(job, acc)(_ +: _))
 
   }
 
+  trait Step[+A] {
+
+    def map[B](f: A => B): Step[B] = this match {
+      case Await(name, symbolSpace, rec) => Await(name, symbolSpace, rec andThen Step.mapf(f))
+      case Done(a, state) => Done(f(a), state)
+      case Abort(state) => Abort(state)
+      case Created(a, next) => Created(a, next map f)
+    }
+
+  }
+
+  object Step {
+    def mapf[A, B](f: A => B): Step[A] => Step[B] = sa => sa map f
+  }
+
+  case class Await[A, I](name: QName, symbolSpace: SymbolSpace[I], rec: Option[I] => Step[A]) extends Step[A]
+
+  case class Done[A](value: A, state: State) extends Step[A]
+
+  case class Abort(state: State) extends Step[Nothing]
+  
+  case class Created[A, O](value: O, next: Step[A]) extends Step[A]
+  
   sealed trait SymbolSpace[X] {
     def name: String
   }
@@ -99,33 +94,38 @@ trait JobMod {
   type JobMsg = String
   type JobLog = List[JobMsg]
 
-  def jobError(msg: String): JobMsg= msg
-  def concatLog(l1: JobLog, l2: JobLog): JobLog = l1 ++ l2
+  type State = (JobConfig, JobLog)
 
-  implicit def jobMsgToJobLog(jobMsg: JobMsg): JobLog = jobMsg :: Nil
+//  def jobError(msg: String): JobMsg= msg
+//  def concatLog(l1: JobLog, l2: JobLog): JobLog = l1 ++ l2
+//
+//  implicit def jobMsgToState(jobMsg: JobMsg): Sta = jobMsg :: Nil
+
+  def addError(state: State, msg: String): State = (state._1, msg +: state._2)
+
   val emptyJobLog = Nil
 
-  def abort[C](msg: String): Step[C] = Abort(jobError(msg))
+  def abort[C](msg: String): Job[C] = Job[C] { state => Abort(addError(state, msg)) }
 
-  def await[C: SymbolSpace](name: QName): Step[C] = Await[C, C](name, implicitly[SymbolSpace[C]], {
-    case Some(c) =>  Done(c, emptyJobLog)
-    case None => Abort(jobError(s"unresolved reference - symbol space: ${implicitly[SymbolSpace[C]].name}; name: $name"))
-  })
+  def await[A: SymbolSpace](name: QName): Job[A] = Job { state => Await[A, A](name, implicitly[SymbolSpace[A]], {
+    case Some(a) => Done(a, state)
+    case None => Abort(addError(state, s"unresolved reference - symbol space: ${implicitly[SymbolSpace[A]].name}; name: $name"))
+  })}
 
-  def created(ct: ComplexType): Step[Unit] = Created(ct, Done((), emptyJobLog))
+  def created[A](a: A): Job[Unit] = Job { state => Created(a, Done((), state)) }
 
   //
   //
   //
 
-  def complexTypeJob(cmp: ComplexTypeElem): Step[ComplexType] = for {
+  def complexTypeJob(cmp: ComplexTypeElem): Job[ComplexType] = for {
     baseType <- await[Type](cmp.content.base)
     attrs <- attrsModelJob(cmp.content)
     ct = ComplexType(???, baseType, ???, attrs, null, cmp.abstrct.value, ???, ???, ???)
     _ <- created(ct)
   } yield ct
 
-  def attrsModelJob(cmp: ComplexTypeContent): Step[AttrsModel] = {
+  def attrsModelJob(cmp: ComplexTypeContent): Job[AttrsModel] = {
     val (attrs, anyAttribute) = cmp match {
       case _: SimpleContentModel => (Nil, None)
       case m: ComplexContentAbbrev => (m.attrs, m.anyAttribute)
@@ -134,16 +134,16 @@ trait JobMod {
     attrsModelJob(attrs, anyAttribute) 
   }
 
-  def attrsModelJob(attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem]): Step[AttrsModel] = {
-    val attrJobs: Seq[Step[AttrsModel]] = attrs map {
+  def attrsModelJob(attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem]): Job[AttrsModel] = {
+    val attrJobs: Seq[Job[AttrsModel]] = attrs map {
       case Left(ae) => ??? // attrsModelJob(ae)
       case Right(ag) => attrsModelJob(ag)
     }
-    val listJob: Step[Seq[AttrsModel]] = Step.sequence(attrsModelJob(anyAttribute) +: attrJobs)
+    val listJob: Job[Seq[AttrsModel]] = Job.sequence(attrsModelJob(anyAttribute) +: attrJobs)
     listJob.map(_.foldLeft(AttrsModel.empty)((am, acc) => acc.add(am)))
   }
 
-  def attrsModelJob(ref: AttributeGroupRefElem): Step[AttrsModel] = await[AttrGroup](ref.ref) map (_.attrsModel)
+  def attrsModelJob(ref: AttributeGroupRefElem): Job[AttrsModel] = await[AttrGroup](ref.ref) map (_.attrsModel)
 
 //  def attrsModelJob(ae: AttributeElemL): Job[AttrsModel] = {
 //    val attrUseJob: Job[AttrUse] = (ae.name, ae.ref) match {
@@ -156,7 +156,7 @@ trait JobMod {
 //    attrUseJob.map(u => AttrsModel(Map(u.decl.name -> u), None))
 //  }
 
-  def attrsModelJob(anyAttribute: Option[AnyAttributeElem]): Step[AttrsModel] = Step.unit(anyAttribute match {
+  def attrsModelJob(anyAttribute: Option[AnyAttributeElem]): Job[AttrsModel] = Job.unit(anyAttribute match {
     case Some(aae) => {
       val disallowedNames = aae.notQName.map(_.foldRight(DisallowedNames.empty)((item, acc) => item match {
         case QNameItem.Qn(qn) => acc.copy(qNames = acc.qNames + qn)
@@ -176,10 +176,8 @@ trait JobMod {
     case None => AttrsModel.empty
   })
 
-  def attrDeclJob(ae: AttributeElemL): Step[AttrDecl] = (ae.name, ae.ref) match {
-    case (Some(an), _) => for {
-
-    } yield AttrDecl(an, ae.targetNamespace.)
+  def attrDeclJob(ae: AttributeElemL): Job[AttrDecl] = (ae.name, ae.ref) match {
+    case (Some(an), _) => ???
     case (_, Some(ar)) => await[AttrDecl](ar)
   }
 
