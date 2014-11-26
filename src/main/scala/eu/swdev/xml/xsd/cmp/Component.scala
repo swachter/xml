@@ -2,28 +2,13 @@ package eu.swdev.xml.xsd.cmp
 
 import java.net.URI
 
-import eu.swdev.xml.base.{WhitespaceProcessing, Location}
+import eu.swdev.xml.base.{SomeValue, WhitespaceProcessing, Location}
 import eu.swdev.xml.name.QName
 import eu.swdev.xml.schema._
 
 /**
  *
  */
-
-sealed trait Annotated extends OpenAttrs {
-  def annotation: Option[AnnotationElem]
-  def id: Option[String]
-}
-
-sealed trait ComplexType extends Annotated
-
-sealed trait Located {
-  def loc: Location
-}
-
-sealed trait OpenAttrs extends Located {
-  def openAttrs: Map[QName, String]
-}
 
 //
 // groups & substitution groups
@@ -53,11 +38,19 @@ sealed trait TypeDefParticle extends Particle
 
 //
 
-sealed trait ComplexDerivation
+sealed trait ComplexDerivation {
+  def base: QName
+  def attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]]
+  def anyAttribute: Option[AnyAttributeElem]
+}
 
-sealed trait SimpleDerivation
+sealed trait SimpleDerivation {
+  def base: QName
+}
 
-sealed trait ComplexTypeContent
+sealed trait ComplexTypeContent {
+  def base: QName
+}
 
 sealed trait ComplexContent extends ComplexTypeContent
 
@@ -69,31 +62,47 @@ case class AllElem(loc: Location, id: Option[String], annotation: Option[Annotat
 
 case class AlternativeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: Option[String], refType: Option[QName], xPathDefaultNamespace: Option[XPathDefaultNamespace], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], openAttrs: Map[QName, String])
 
-case class AnnotationElem(loc: Location, id: Option[String], seq: Seq[Either[AppInfoElem, DocumentationElem]], openAttrs: Map[QName, String]) extends OpenAttrs
+case class AnnotationElem(loc: Location, id: Option[String], seq: Seq[Either[AppInfoElem, DocumentationElem]], openAttrs: Map[QName, String])
 
-case class AnyAttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContent: Option[ProcessContents], notQName: Option[List[QNameItemA]], openAttrs: Map[QName, String]) extends NestedParticle
+case class AnyAttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], notQName: Option[List[QNameItemA]], openAttrs: Map[QName, String]) extends NestedParticle
 
-case class AnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContent: Option[ProcessContents], notQName: Option[List[QNameItem]], minOccurs: Option[Int], maxOccurs: Option[MaxOccurs], openAttrs: Map[QName, String]) extends NestedParticle
+case class AnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], notQName: Option[List[QNameItem]], minOccurs: Option[Int], maxOccurs: Option[MaxOccurs], openAttrs: Map[QName, String]) extends NestedParticle
 
 case class AppInfoElem(loc: Location, source: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
-case class AttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], use: Option[Use], default: Option[String], fixed: Option[String], form: Option[Form], targetNamespace: Option[URI], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
+sealed trait AttributeElem {
+  def loc: Location
+  def id: Option[String]
+  def annotation: Option[AnnotationElem]
+  def name: Option[String]
+  def refType: Option[QName]
+  def default: Option[String]
+  def fixed: Option[String]
+  def inheritable: Option[Boolean]
+}
 
-case class AttributeGroupDefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, attrs: Seq[Either[AttributeElem, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], openAttrs: Map[QName, String]) extends RedefinableGroupElem
+case class AttributeElemG(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Some[String], refType: Option[QName], default: Option[String], fixed: Option[String], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends AttributeElem with SchemaTopGroupElem
+case class AttributeElemL(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], use: Option[Use], default: Option[String], fixed: Option[String], form: Option[Form], targetNamespace: Option[URI], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends AttributeElem
+
+case class AttributeGroupDefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
 case class AttributeGroupRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], ref: QName, openAttrs: Map[QName, String]) extends NestedParticle
 
 case class ChoiceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], particles: Seq[NestedParticle], openAttrs: Map[QName, String]) extends NestedParticle with InGroupDefParticle with TypeDefParticle
 
-case class ComplexContentAbbrev(openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElem, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem]) extends ComplexContent
+case class ComplexContentAbbrev(openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem]) extends ComplexContent {
+  override def base: QName = XsNames.ANY_TYPE
+}
 
-case class ComplexContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mixed: Option[Boolean], derivation: ComplexDerivation, openAttrs: Map[QName, String]) extends ComplexContent
+case class ComplexContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mixed: Option[Boolean], derivation: ComplexDerivation, openAttrs: Map[QName, String]) extends ComplexContent {
+  override def base: QName = derivation.base
+}
 
-case class ComplexExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElem, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivation
+case class ComplexExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivation
 
-case class ComplexRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElem, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivation
+case class ComplexRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivation
 
-case class ComplexTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], mixed: Option[Boolean], abstrct: Option[Boolean], finl: Option[RelationSet[CtFinalCtrl]], block: Option[RelationSet[CtBlockCtrl]], defaultAttributesApply: Option[Boolean], content: ComplexTypeContent, openAttrs: Map[QName, String]) extends RedefinableGroupElem
+case class ComplexTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], mixed: Option[Boolean], abstrct: SomeValue[Boolean], finl: Option[RelationSet[CtFinalCtrl]], block: Option[RelationSet[CtBlockCtrl]], defaultAttributesApply: Option[Boolean], content: ComplexTypeContent, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
 case class DefaultOpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], appliesToEmpty: Option[Boolean], mode: Option[DefaultOpenContentModeToken], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
 
@@ -119,7 +128,7 @@ case class ListElem(loc: Location, id: Option[String], annotation: Option[Annota
 
 case class NotationElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, publ: Option[String], system: Option[URI], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
 
-case class OpenContentAnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContent: Option[ProcessContents], openAttrs: Map[QName, String])
+case class OpenContentAnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], openAttrs: Map[QName, String])
 
 case class OpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mode: Option[OpenContentModeToken], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
 
@@ -127,17 +136,19 @@ case class OverrideElem(loc: Location, id: Option[String], schemaLocation: Strin
 
 case class RedefineElem(loc: Location, id: Option[String], schemaLocation: String, redefines: Seq[Either[RedefinableGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
 
-case class SchemaElem(loc: Location, id: Option[String], compositions: Seq[Either[CompositionGroupElem, AnnotationElem]], defaultOpenContent: Option[DefaultOpenContentElem], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends OpenAttrs
+case class SchemaElem(loc: Location, id: Option[String], compositions: Seq[Either[CompositionGroupElem, AnnotationElem]], defaultOpenContent: Option[DefaultOpenContentElem], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String])
 
 case class SelectorElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[XPathDefaultNamespace], openAttrs: Map[QName, String])
 
 case class SequenceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], particles: Seq[NestedParticle], openAttrs: Map[QName, String]) extends NestedParticle with InGroupDefParticle with TypeDefParticle
 
-case class SimpleContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], derivation: SimpleDerivation, openAttrs: Map[QName, String]) extends ComplexTypeContent
+case class SimpleContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], derivation: SimpleDerivation, openAttrs: Map[QName, String]) extends ComplexTypeContent {
+  override def base: QName = derivation.base
+}
 
-case class SimpleContentExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, attrs: Seq[Either[AttributeElem, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivation
+case class SimpleContentExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivation
 
-case class SimpleContentRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, simpleType: Option[SimpleTypeElem], facets: Seq[FacetElem], attrs: Seq[Either[AttributeElem, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivation
+case class SimpleContentRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, simpleType: Option[SimpleTypeElem], facets: Seq[FacetElem], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivation
 
 case class SimpleTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], derivation: SimpleDerivationGroupElem, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 

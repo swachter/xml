@@ -22,6 +22,10 @@ object Relation {
 
 case class DisallowedNames(qNames: Set[QName], defined: Boolean, sibling: Boolean)
 
+object DisallowedNames {
+  val empty = DisallowedNames(Set[QName](), false, false)
+}
+
 trait ExplicitTimezone
 
 object ExplicitTimezone {

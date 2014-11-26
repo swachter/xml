@@ -2,6 +2,10 @@ package eu.swdev.xml.name
 
 case class Namespace(val underlying: String) extends AnyVal
 
+object Namespace {
+  val NoNamespace = new Namespace("")
+}
+
 case class LocalName(val underlying: String) extends AnyVal
 
 case class Prefix(val underlying: String) extends AnyVal

@@ -29,7 +29,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val any: Parser[AnyElem] = xsElem("any")(annotated ~ anyAttrGroup ~ notQNameAttr.opt ~ occurs) gmap Generic[AnyElem]
 
-  lazy val anyAttrGroup = namespaceListAttr.opt ~ notNamespaceAttr.opt ~ processContentsAttr.opt
+  lazy val anyAttrGroup = namespaceListAttr.opt ~ notNamespaceAttr.opt ~ processContentsAttr.some(ProcessContents.Strict)
 
   lazy val anyAttribute: Parser[AnyAttributeElem] = xsElem("anyAttribute")(annotated ~ anyAttrGroup ~ notQNameAttrA.opt) gmap Generic[AnyAttributeElem]
 
@@ -39,10 +39,11 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val assert: Parser[AssertElem] = xsElem("assert")(annotated ~ testAttr.opt ~ xPathDefaultNamespaceAttr.opt) gmap Generic[AssertElem]
 
-  lazy val attrDecls = either(attribute, attributeGroupRef).rep ~ anyAttribute.opt
+  lazy val attrDecls = either(attributeL, attributeGroupRef).rep ~ anyAttribute.opt
 
-  lazy val attribute: Parser[AttributeElem] = xsElem("attribute")(annotated ~ defRef ~ typeAttr.opt ~ useAttr.opt ~ defaultAttr.opt ~ fixedAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ inheritableAttr.opt ~ simpleType.opt) gmap Generic[AttributeElem]
-  
+  lazy val attributeG: Parser[AttributeElemG] = xsElem("attribute")(annotated ~ nameAttr.map(Some(_)) ~ typeAttr.opt ~ defaultAttr.opt ~ fixedAttr.opt ~ inheritableAttr.opt ~ simpleType.opt) gmap Generic[AttributeElemG]
+  lazy val attributeL: Parser[AttributeElemL] = xsElem("attribute")(annotated ~ defRef ~ typeAttr.opt ~ useAttr.opt ~ defaultAttr.opt ~ fixedAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ inheritableAttr.opt ~ simpleType.opt) gmap Generic[AttributeElemL]
+
   lazy val attributeGroupDef: Parser[AttributeGroupDefElem] = xsElem("attributeGroup")(annotated ~ nameAttr ~ attrDecls) gmap Generic[AttributeGroupDefElem]
 
   lazy val attributeGroupRef: Parser[AttributeGroupRefElem] = xsElem("attributeGroup")(annotated ~ refAttr) gmap Generic[AttributeGroupRefElem]
@@ -61,7 +62,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val complexRestriction: Parser[ComplexRestrictionElem] = xsElem("restriction")(annotated ~ baseAttr ~ complexContentModel) gmap Generic[ComplexRestrictionElem]
 
-  lazy val complexType: Parser[ComplexTypeElem] = xsElem("complexType")(annotated ~ nameAttr.opt ~ mixedAttr.opt ~ abstractAttr.opt ~ complexTypeFinalAttr.opt ~ complexTypeBlockAttr.opt ~ defaultAttributesApplyAttr.opt ~ complexTypeContent) gmap Generic[ComplexTypeElem]
+  lazy val complexType: Parser[ComplexTypeElem] = xsElem("complexType")(annotated ~ nameAttr.opt ~ mixedAttr.opt ~ abstractAttr.some(false) ~ complexTypeFinalAttr.opt ~ complexTypeBlockAttr.opt ~ defaultAttributesApplyAttr.opt ~ complexTypeContent) gmap Generic[ComplexTypeElem]
 
   lazy val complexTypeBlockAttr: Parser[RelationSet[CtBlockCtrl]] = derivationCtrlAttr("block")(dcExtension orElse dcRestriction)
 
@@ -207,7 +208,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val schemaLocationAttr: Parser[String] = requiredAttr(QNameFactory.caching(new LocalName("schemaLocation")))
 
-  lazy val schemaTopGroupElem: Parser[SchemaTopGroupElem] = redefinableGroupElem | element | attribute | notation
+  lazy val schemaTopGroupElem: Parser[SchemaTopGroupElem] = redefinableGroupElem | element | attributeG | notation
 
   lazy val selector: Parser[SelectorElem] = xsElem("selector")(annotated ~ xPathAttr ~ xPathDefaultNamespaceAttr.opt) gmap Generic[SelectorElem]
 
