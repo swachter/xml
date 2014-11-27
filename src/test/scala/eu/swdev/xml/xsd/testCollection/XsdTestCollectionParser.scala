@@ -12,6 +12,8 @@ import shapeless.{::, Generic, HList, HNil}
 
 object XsdTestCollectionParser extends XmlPushParserMod with XmlEventReaderInputs {
 
+  type Payload = Unit
+
   val XtNamespace = Namespace("http://www.w3.org/XML/2004/xml-schema-test-suite/")
   val XlNamespace = Namespace("http://www.w3.org/1999/xlink")
 
@@ -75,7 +77,7 @@ object XsdTestCollectionParser extends XmlPushParserMod with XmlEventReaderInput
     inputs(reader)
   }
 
-  def parseDoc[O](p: Parser[O]): URL => DriveResult[O] = in => document(p).drive(initialState, inputs(in))
+  def parseDoc[O](p: Parser[O]): URL => DriveResult[O] = in => document(p).drive(initialState(()), inputs(in))
 }
 
 case class AnnotationElem(loc: Location, id: Option[String], seq: Seq[Either[AppInfoElem, DocumentationElem]], openAttrs: Map[QName, String])

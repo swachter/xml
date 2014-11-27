@@ -19,10 +19,13 @@ trait XmlPushParserMod extends PushParserMod {
 
   type State = XmlParserState
 
+  type Payload
+
   //
 
   sealed trait XmlEvent {
     def location: Location
+
     def rawXml: String
   }
 
@@ -30,7 +33,9 @@ trait XmlPushParserMod extends PushParserMod {
 
   sealed trait StartElementEvent extends XmlEvent {
     def name: QName
+
     def newNamespaces: TraversableOnce[(Prefix, Namespace)]
+
     def attrs: Map[QName, String]
   }
 
@@ -47,10 +52,14 @@ trait XmlPushParserMod extends PushParserMod {
   //
 
   case class XmlParserState(
-                             namespaces: List[Namespaces],
-                             startedElements: List[QName],
-                             log: List[String],
-                             data: List[StateData])
+    namespacesStack: List[Namespaces],
+    startedElements: List[QName],
+    log: List[String],
+    dataStack: List[StateData],
+    payload: Payload
+  ) {
+    def updateData(stateData: StateData): XmlParserState = copy(dataStack = stateData :: dataStack.tail)
+  }
 
   sealed trait StateData
 
@@ -58,18 +67,24 @@ trait XmlPushParserMod extends PushParserMod {
 
   case object NoStateData extends StateData
 
-  val initialState = XmlParserState(List(Namespaces.initial), Nil, Nil, List(NoStateData))
+  def initialState(initialPayload: Payload) = XmlParserState(List(Namespaces.initial), Nil, Nil, List(NoStateData), initialPayload)
 
   //
 
   def abort[O](state: State, msg: String): Abort[O] = Abort(state.copy(log = msg :: state.log))
 
-  def fail[O](string: String) = Parser{abort(_, string)}
+  def fail[O](string: String) = Parser {
+    abort(_, string)
+  }
+
+  val getPayload: Parser[Payload] = Parser { state => Done(state.payload, state) }
+
+  def setPayload(payload: Payload): Parser[Unit] = Parser { state => Done((), state.copy(payload = payload))}
 
   val startDocument: Parser[Location] = Parser(state => {
     Await {
       case Some(e: StartDocumentEvent) =>
-          Done(e.location, XmlParserState(state.namespaces, state.startedElements, state.log, NoStateData :: state.data))
+        Done(e.location, state.copy(dataStack = NoStateData :: state.dataStack))
       case i => abort(state, s"can not start document - unexpected input: $i")
 
     }
@@ -79,9 +94,9 @@ trait XmlPushParserMod extends PushParserMod {
     Await {
       case Some(e: StartElementEvent) =>
         if (name == e.name) {
-          val ns = state.namespaces.head.nestedScope(e.newNamespaces) :: state.namespaces
+          val ns = state.namespacesStack.head.nestedScope(e.newNamespaces) :: state.namespacesStack
           val es = e.name :: state.startedElements
-          Done(e.location, XmlParserState(ns, es, state.log, StartedElementData(e.attrs, Set[QName]()) :: state.data))
+          Done(e.location, state.copy(namespacesStack = ns, startedElements = es, dataStack = StartedElementData(e.attrs, Set[QName]()) :: state.dataStack))
         } else {
           abort(state, s"can not start element; names differ - name: $name; event.name: ${e.name}")
         }
@@ -92,65 +107,72 @@ trait XmlPushParserMod extends PushParserMod {
   val endDocument: Parser[Location] = Parser(state => {
     Await {
       case Some(e: EndDocumentEvent) =>
-        Done(e.location, XmlParserState(state.namespaces, state.startedElements, state.log, state.data.tail))
+        Done(e.location, state.copy(dataStack = state.dataStack.tail))
       case i => abort(state, s"can not end document - unexpected input: $i")
 
     }
   })
 
-  val endElement: Parser[Unit] = Parser {
-    case state@XmlParserState(namespaces, startedElements, log, StartedElementData(attrs, processed) :: dataTail) => {
-      Await {
-        case Some(e: EndElementEvent) =>
-          if (e.name == startedElements.head) {
-            val unprocessedAttrs = attrs.filter(t => !processed.contains(t._1))
-            val resLog = if (unprocessedAttrs.isEmpty) log else s"unprocessed attributes: $unprocessedAttrs" :: log
-            Done((), XmlParserState(namespaces.tail, startedElements.tail, resLog, dataTail))
-          } else {
-            abort(state, s"can not end element; names differ - event.name: ${e.name}; head: ${startedElements.head}")
-          }
-        case Some(i) => abort(state, s"can not end element - unexpected input: $i at position: ${i.location}")
-        case i => abort(state, s"can not end element - missing input: $i")
+  val endElement: Parser[Unit] = Parser { state =>
+    state.dataStack.headOption match {
+      case Some(StartedElementData(attrs, processed)) => {
+        Await {
+          case Some(e: EndElementEvent) =>
+            if (e.name == state.startedElements.head) {
+              val unprocessedAttrs = attrs.filter(t => !processed.contains(t._1))
+              val resLog = if (unprocessedAttrs.isEmpty) state.log else s"unprocessed attributes: $unprocessedAttrs" :: state.log
+              Done((), state.copy(namespacesStack = state.namespacesStack.tail, startedElements = state.startedElements.tail, log = resLog, dataStack = state.dataStack.tail))
+            } else {
+              abort(state, s"can not end element; names differ - event.name: ${e.name}; head: ${state.startedElements.head}")
+            }
+          case Some(i) => abort(state, s"can not end element - unexpected input: $i at position: ${i.location}")
+          case i => abort(state, s"can not end element - missing input: $i")
+        }
       }
+      case None => abort(state, s"can not end element; no element has started - unexpected parser state: $state")
     }
-    case state => abort(state, s"can not end element; no element has started - unexpected parser state: $state")
-
   }
 
-  def selectAttrs(filter: QName => Boolean): Parser[Map[QName, String]] = Parser {
-    case state@XmlParserState(_, _, _, StartedElementData(attrs, processed) :: dataTail) => {
-      val selectedAttrs = attrs.filterKeys(qn => filter(qn) && !processed.contains(qn))
-      Done(selectedAttrs, state.copy(data = StartedElementData(attrs, processed ++ selectedAttrs.keys) :: dataTail))
-    }
-    case state => abort(state, s"can not extract open attributes")
-  }
-
-  def optionalAttr(an: QName): Parser[Option[String]] = Parser {
-    case state@XmlParserState(_, _, _, StartedElementData(attrs, processed) :: tail) => {
-      if (attrs.contains(an)) {
-        Done(Some(attrs(an)), state.copy(data = StartedElementData(attrs, processed + an) :: tail))
-      } else {
-        Done(None, state)
+  def selectAttrs(filter: QName => Boolean): Parser[Map[QName, String]] = Parser { state =>
+    state.dataStack.headOption match {
+      case Some(StartedElementData(attrs, processed)) => {
+        val selectedAttrs = attrs.filterKeys(qn => filter(qn) && !processed.contains(qn))
+        Done(selectedAttrs, state.updateData(StartedElementData(attrs, processed ++ selectedAttrs.keys)))
       }
+      case _ => abort(state, s"can not extract open attributes")
     }
-    case state => abort(state, s"can not extract optional attribute - name: $an")
   }
 
-  def requiredAttr(an: QName): Parser[String] = Parser {
-    case state@XmlParserState(_, _, _, StartedElementData(attrs, processed) :: tail) => {
-      if (attrs.contains(an)) {
-        Done(attrs(an), state.copy(data = StartedElementData(attrs, processed + an) :: tail))
-      } else {
-        abort(state, s"missing attribute - name: $an")
+  def optionalAttr(an: QName): Parser[Option[String]] = Parser { state =>
+    state.dataStack.headOption match {
+      case Some(StartedElementData(attrs, processed)) => {
+        if (attrs.contains(an)) {
+          Done(Some(attrs(an)), state.updateData(StartedElementData(attrs, processed + an)))
+        } else {
+          Done(None, state)
+        }
       }
+      case _ => abort(state, s"can not extract optional attribute - name: $an")
     }
-    case state => abort(state, s"can not access attributes; invalid parser state - attribute name: $an; parser state: $state")
   }
 
-  def resolveQn(lexicalRep: String): Parser[QName] = Parser (state => {
+  def requiredAttr(an: QName): Parser[String] = Parser { state =>
+    state.dataStack.headOption match {
+      case Some(StartedElementData(attrs, processed)) => {
+        if (attrs.contains(an)) {
+          Done(attrs(an), state.updateData(StartedElementData(attrs, processed + an)))
+        } else {
+          abort(state, s"missing attribute - name: $an")
+        }
+      }
+      case _ => abort(state, s"can not access attributes; invalid parser state - attribute name: $an; parser state: $state")
+    }
+  }
+
+  def resolveQn(lexicalRep: String): Parser[QName] = Parser(state => {
     val (pr, ln) = QName.parse(lexicalRep)
     pr match {
-      case Some(p) => state.namespaces.head.namespaceForPrefix(p) match {
+      case Some(p) => state.namespacesStack.head.namespaceForPrefix(p) match {
         case Some(n) => Done(QNameFactory.caching(n, ln), state)
         case None => abort(state, s"unbounded namespace prefix: $p")
       }
@@ -175,7 +197,10 @@ trait XmlPushParserMod extends PushParserMod {
 
     def concat(strings: List[String]): String = {
       val size = strings.map(_.length).sum
-      val sb = strings.foldRight(new StringBuilder(size))((s, accu) => { accu.append(s); accu })
+      val sb = strings.foldRight(new StringBuilder(size))((s, accu) => {
+        accu.append(s);
+        accu
+      })
       sb.toString()
     }
 
@@ -202,7 +227,8 @@ trait XmlPushParserMod extends PushParserMod {
 
 }
 
-trait XmlEventReaderInputs { self: XmlPushParserMod =>
+trait XmlEventReaderInputs {
+  self: XmlPushParserMod =>
 
   def inputs(reader: XMLEventReader): self.DriveInputs = {
 
@@ -234,10 +260,10 @@ trait XmlEventReaderInputs { self: XmlPushParserMod =>
     case class StartDocumentEventImpl(underlying: je.StartDocument) extends StartDocumentEvent with XmlEventImpl
 
     case class StartElementEventImpl(
-                                      name: QName,
-                                      attrs: Map[QName, String],
-                                      newNamespaces: Map[Prefix, Namespace],
-                                      underlying: je.StartElement) extends StartElementEvent with XmlEventImpl
+      name: QName,
+      attrs: Map[QName, String],
+      newNamespaces: Map[Prefix, Namespace],
+      underlying: je.StartElement) extends StartElementEvent with XmlEventImpl
 
     case class EndElementEventImpl(name: QName, underlying: je.EndElement) extends EndElementEvent with XmlEventImpl
 

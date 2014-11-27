@@ -2,7 +2,7 @@ package eu.swdev.xml.xsd.parser
 
 import java.net.URI
 
-import eu.swdev.xml.base.{SomeValue, WhitespaceProcessing, Location}
+import eu.swdev.xml.base._
 import eu.swdev.xml.name._
 import eu.swdev.xml.pushparser.XmlPushParserMod
 import eu.swdev.xml.schema._
@@ -13,6 +13,10 @@ import shapeless.{::, Generic, HList, HNil}
 import scala.util.{Failure, Success, Try}
 
 trait XsdPushParserMod extends XmlPushParserMod {
+
+  type Payload = Int
+
+  def initialState: State = initialState(0)
 
   type OpenAttrsValue = Map[QName, String]
   type IdAttrValue = Option[String]
@@ -66,7 +70,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val complexRestriction: Parser[ComplexRestrictionElem] = xsElem("restriction")(annotated ~ baseAttr ~ complexContentModel) gmap Generic[ComplexRestrictionElem]
 
-  lazy val complexType: Parser[ComplexTypeElem] = xsElem("complexType")(annotated ~ nameAttr.opt ~ mixedAttr.opt ~ abstractAttr.some(false) ~ complexTypeFinalAttr.opt ~ complexTypeBlockAttr.opt ~ defaultAttributesApplyAttr.opt ~ complexTypeContent) gmap Generic[ComplexTypeElem]
+  lazy val complexType: Parser[ComplexTypeElem] = xsElem("complexType")(annotated ~ someNameAttr(nameAttr) ~ mixedAttr.opt ~ abstractAttr.some(false) ~ complexTypeFinalAttr.opt ~ complexTypeBlockAttr.opt ~ defaultAttributesApplyAttr.opt ~ complexTypeContent) gmap Generic[ComplexTypeElem]
 
   lazy val complexTypeBlockAttr: Parser[RelationSet[CtBlockCtrl]] = derivationCtrlAttr("block")(relExtension orElse relRestriction)
 
@@ -105,8 +109,10 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val facet: Parser[FacetElem] = assertion | enumeration | explicitTimezone | fractionDigits | length | maxExclusive | maxInclusive | maxLength | minExclusive | minInclusive | minLength | pattern | totalDigits | whitespace
 
   lazy val field: Parser[FieldElem] = xsElem("field")(annotated ~ xPathAttr ~ xPathDefaultNamespaceAttr.opt) gmap Generic[FieldElem]
-  
-  lazy val finalDefaultAttr: Parser[SomeValue[RelationSet[TypeDerivationCtrl]]] = derivationCtrlAttr("finalDefault")(relExtension orElse relRestriction orElse relList orElse relUnion).some(RelationSet.Items(Nil))
+
+  def finalAttrDef(name: String): Parser[SomeValue[RelationSet[TypeDerivationCtrl]]] = derivationCtrlAttr(name)(relExtension orElse relRestriction orElse relList orElse relUnion).some(RelationSet.Items(Nil))
+  lazy val finalDefaultAttr = finalAttrDef("finalDefault")
+  lazy val finalAttr = finalAttrDef("final")
 
   lazy val fixedAttr = strAttr("fixed")
 
@@ -236,7 +242,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val simpleRestrictionModel: Parser[Option[SimpleTypeElem] :: List[FacetElem] :: HNil] = { val r = simpleType.opt ~ facet.rep; r }
 
-  lazy val simpleType: Parser[SimpleTypeElem] = xsElem("simpleType")(annotated ~ nameAttr.opt ~ simpleDerivationGroupElem) gmap Generic[SimpleTypeElem]
+  lazy val simpleType: Parser[SimpleTypeElem] = xsElem("simpleType")(annotated ~ someNameAttr(nameAttr) ~ finalAttr ~ simpleDerivationGroupElem) gmap Generic[SimpleTypeElem]
 
   lazy val simpleTypeRestriction: Parser[SimpleTypeRestrictionElem] = xsElem("restriction")(annotated ~ baseAttr.opt ~ simpleRestrictionModel) gmap Generic[SimpleTypeRestrictionElem]
 
@@ -376,6 +382,14 @@ trait XsdPushParserMod extends XmlPushParserMod {
         case s => fail(s"illegal derivation control $s")
       }
     }.map(RelationSet.Items(_))
+  }
+
+  private def someNameAttr(p: Parser[String]): Parser[SomeValue[String]] = for {
+    o <- p.opt
+    p <- getPayload
+    _ <- setPayload(p + (if (o.isDefined) 0 else 1))
+  } yield {
+    o.fold[SomeValue[String]](DefaultValue(s"##type$p##"))(DefinedValue(_))
   }
 
   private def stringToNsToken(string: String): Parser[NamespaceItemToken] = string match {

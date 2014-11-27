@@ -1,5 +1,7 @@
 package eu.swdev.xml.schema
 
+import java.util.concurrent.atomic.AtomicInteger
+
 import eu.swdev.xml.base.{True, False, Unknown, Ternary}
 import eu.swdev.xml.name._
 

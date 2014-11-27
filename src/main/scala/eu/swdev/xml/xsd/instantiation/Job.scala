@@ -120,21 +120,11 @@ trait JobMod {
 
   case class State(config: JobConf, log: JobLog)
 
-//  def jobError(msg: String): JobMsg= msg
-//  def concatLog(l1: JobLog, l2: JobLog): JobLog = l1 ++ l2
-//
-//  implicit def jobMsgToState(jobMsg: JobMsg): Sta = jobMsg :: Nil
-
   def addError(state: State, msg: String): State = state.copy(log = msg +: state.log)
 
   val emptyJobLog = Nil
 
   def abort[C](msg: String): Job[C] = Job[C] { state => Abort(addError(state, msg)) }
-
-//  def await[A: SymbolSpace](name: QName): Job[A] = Job { state => Await[A, A](name, implicitly[SymbolSpace[A]], {
-//    case Some(a) => Done(a, state)
-//    case None => Abort(addError(state, s"unresolved reference - symbol space: ${implicitly[SymbolSpace[A]].name}; name: $name"))
-//  })}
 
   def await[A](name: QName)(implicit ev: Awaitable[A]): Job[A] = Job { state => Await[A, ev.symbolSpace.SymbolType](name, ev.symbolSpace, {
     case Some(s) => {
@@ -150,10 +140,6 @@ trait JobMod {
 
   def created[A](a: A): Job[Unit] = Job { state => Created(a, Done((), state)) }
 
-//  def getState: Job[State] = Job { state => Done(state, state) }
-//  
-//  def setState(state: State): Job[Unit] = Job { _ => Done((), state) }
-  
   def getConf: Job[JobConf] = Job { state => Done(state.config, state) }
   
   //
@@ -247,7 +233,18 @@ trait JobMod {
     ae.refType.fold(ae.simpleType.fold(Job.unit[SimpleType](anySimpleType))(simpleTypeJob(_)))(qn => await[SimpleType](qn))
   }
 
-  def simpleTypeJob(st: SimpleTypeElem): Job[SimpleType] = ???
+  // part 2; 4.1.2
+  def simpleTypeJob(st: SimpleTypeElem): Job[SimpleType] = st.derivation match {
+    case d: SimpleTypeRestrictionElem => for {
+      baseType <- d.base.fold(simpleTypeJob(d.tpe.get))(await[SimpleType](_))
+    } yield ???
+    case d: ListElem => for {
+      itemType <- d.itemType.fold(simpleTypeJob(d.simpleType.get))(await[SimpleType](_))
+    } yield ??? // ListType(st.name, itemType)
+    case d: UnionElem => ???
+  }
+
+  def baseTypeJob(str: SimpleTypeRestrictionElem): Job[SimpleType] = str.base.fold(simpleTypeJob(str.tpe.get))(await[SimpleType](_))
 
   def convertNamespaceTokens(list: List[NamespaceItemToken], conf: JobConf): Set[Namespace] = {
     list.map {

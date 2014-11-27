@@ -19,7 +19,8 @@ class XsdTestCollectionInstanceTest extends FunSuite with Inside {
       inputs(reader)
     }
 
-    def parseDoc[O](p: Parser[O]): URL => DriveResult[O] = in => document(p).drive(initialState, inputs(in))
+    def parseDoc[O](p: Parser[O]): URL => DriveResult[O] = in => document(p).drive(initialState(0), inputs(in))
+
   }
 
   val suiteUrl = this.getClass.getResource("/xmlschema2006-11-06/suite.xml")

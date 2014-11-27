@@ -20,8 +20,9 @@ class XsdPushParserModTest extends FunSuite with Inside {
       inputs(reader)
     }
 
-    def parseDoc[O](p: Parser[O]): String => DriveResult[O] = s => document(p).drive(initialState, inputs(s))
+    def parseDoc[O](p: Parser[O]): String => DriveResult[O] = s => document(p).drive(initialState(initialPayload), inputs(s))
 
+    def initialPayload: Payload
   }
 
 
@@ -62,6 +63,8 @@ class XsdPushParserModTest extends FunSuite with Inside {
         (av, bv, cv)
       }
 
+      type Payload = Unit
+      def initialPayload = ()
     }
 
     val res = parsers.parseDoc(parsers.parseElement)("""<p:e xmlns:p="ns" a="1" b="2"/>""")
@@ -85,7 +88,9 @@ class XsdPushParserModTest extends FunSuite with Inside {
 
   }
 
-  object xsdParsers extends XsdPushParserMod with StringInputs
+  object xsdParsers extends XsdPushParserMod with StringInputs {
+    val initialPayload = 0
+  }
 
   test("annotation") {
 
