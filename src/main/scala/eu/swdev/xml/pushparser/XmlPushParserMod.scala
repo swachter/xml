@@ -212,7 +212,7 @@ trait XmlEventReaderInputs { self: XmlPushParserMod =>
     implicit def toQName(jqn: Jqn): QName = {
       val ns = jqn.getNamespaceURI
       val ln = jqn.getLocalPart
-      QNameFactory.caching(new Namespace(ns), new LocalName(ln))
+      QNameFactory.caching(Namespace(ns), LocalName(ln))
     }
 
     trait XmlEventImpl extends XmlEvent {
@@ -251,7 +251,7 @@ trait XmlEventReaderInputs { self: XmlPushParserMod =>
         case e: je.StartElement => {
           import scala.collection.JavaConverters._
           val attrs = e.getAttributes.asScala.asInstanceOf[Iterator[je.Attribute]].map(a => toQName(a.getName) -> a.getValue).toMap
-          val newNamespaces = e.getNamespaces.asScala.asInstanceOf[Iterator[je.Namespace]].map(n => new Prefix(n.getPrefix) -> new Namespace(n.getNamespaceURI)).toMap
+          val newNamespaces = e.getNamespaces.asScala.asInstanceOf[Iterator[je.Namespace]].map(n => Prefix(n.getPrefix) -> Namespace(n.getNamespaceURI)).toMap
           StartElementEventImpl(e.getName, attrs, newNamespaces, e)
         }
         case e: je.EndElement => EndElementEventImpl(e.getName, e)

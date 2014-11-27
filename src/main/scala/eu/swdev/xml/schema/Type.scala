@@ -77,12 +77,12 @@ sealed trait DerivedType extends Type {
 sealed case class ComplexType(
   name: QName,
   baseType: Type,
-  derivation: CtDerivationMethod,
+  derivation: CtDerivationCtrl,
   attrs: AttrsModel,
   var content: ContentModel,
   isAbstract: Boolean,
-  finalSet: Set[CtDerivationMethod],
-  prohibitedSubstitutions: Set[CtDerivationMethod],
+  finalSet: Set[CtDerivationCtrl],
+  prohibitedSubstitutions: Set[CtDerivationCtrl],
   assertions: List[Assertion]
 ) extends DerivedType {
   self =>

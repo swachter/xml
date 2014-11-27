@@ -16,8 +16,8 @@ class NamespacesTest extends FunSuite {
       nsCtx.nestedScope(List((XmlPrefix -> XmlnsNamespace)))
     }
 
-    val prefix = new Prefix("p")
-    val namespace = new Namespace("ns")
+    val prefix = Prefix("p")
+    val namespace = Namespace("ns")
     val nsCtx2 = nsCtx.nestedScope(List(prefix -> namespace))
 
 

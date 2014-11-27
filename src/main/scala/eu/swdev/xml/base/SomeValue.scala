@@ -2,7 +2,7 @@ package eu.swdev.xml.base
 
 /**
   */
-sealed trait SomeValue[X] {
+sealed trait SomeValue[+X] {
   def value: X
 }
 
@@ -11,6 +11,6 @@ object SomeValue {
   def default[X](x: X): SomeValue[X] = DefaultValue(x)
 }
 
-case class DefinedValue[X](value: X) extends SomeValue[X]
+case class DefinedValue[+X](value: X) extends SomeValue[X]
 
-case class DefaultValue[X](value: X) extends SomeValue[X]
+case class DefaultValue[+X](value: X) extends SomeValue[X]

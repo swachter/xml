@@ -12,8 +12,8 @@ import shapeless.{::, Generic, HList, HNil}
 
 object XsdTestCollectionParser extends XmlPushParserMod with XmlEventReaderInputs {
 
-  val XtNamespace = new Namespace("http://www.w3.org/XML/2004/xml-schema-test-suite/")
-  val XlNamespace = new Namespace("http://www.w3.org/1999/xlink")
+  val XtNamespace = Namespace("http://www.w3.org/XML/2004/xml-schema-test-suite/")
+  val XlNamespace = Namespace("http://www.w3.org/1999/xlink")
 
   lazy val annotation: Parser[AnnotationElem] = xtElem("annotation")(idAttr ~ either(appInfo, documentation).rep) gmap Generic[AnnotationElem]
 
@@ -27,7 +27,7 @@ object XsdTestCollectionParser extends XmlPushParserMod with XmlEventReaderInput
 
   lazy val instanceTest: Parser[InstanceTestElem] = xtElem("instanceTest")(strAttr("name") ~ ref("instanceDocument") ~ expected.opt ~ statusEntry("current").opt ~ statusEntry("prior").rep) gmap Generic[InstanceTestElem]
 
-  lazy val langAttr = optionalAttr(QNameFactory.caching(XmlNamespace, new LocalName("lang")))
+  lazy val langAttr = optionalAttr(QNameFactory.caching(XmlNamespace, LocalName("lang")))
 
   lazy val openAttrs: Parser[Map[QName, String]] = selectAttrs(_.namespace != XtNamespace)
 
@@ -35,7 +35,7 @@ object XsdTestCollectionParser extends XmlPushParserMod with XmlEventReaderInput
 
   lazy val schemaTest: Parser[SchemaTestElem] = xtElem("schemaTest")(strAttr("name") ~ ref("schemaDocument").rep ~ expected.opt ~ statusEntry("current").opt ~ statusEntry("prior").rep) gmap Generic[SchemaTestElem]
 
-  lazy val sourceAttr: Parser[Option[String]] = optionalAttr(QNameFactory.caching(new LocalName("source")))
+  lazy val sourceAttr: Parser[Option[String]] = optionalAttr(QNameFactory.caching(LocalName("source")))
 
   def statusEntry(name: String): Parser[StatusEntryElem] = xtElem(name)(strAttr("status") ~ strAttr("date") ~ strAttr("bugzilla").opt) gmap Generic[StatusEntryElem]
 
@@ -61,13 +61,13 @@ object XsdTestCollectionParser extends XmlPushParserMod with XmlEventReaderInput
   private lazy val openAttrsEndElem: Parser[Map[QName, String] :: HNil] = { val r = openAttrs ~ endElement; r }
 
 
-  private def xtElem[HL <: HList](name: String)(p: => Parser[HL])(implicit ev: Prepend[Location :: HL, Map[QName, String] :: HNil]) = startElement(QNameFactory.caching(XtNamespace, new LocalName(name))) ~ p ~ openAttrsEndElem
+  private def xtElem[HL <: HList](name: String)(p: => Parser[HL])(implicit ev: Prepend[Location :: HL, Map[QName, String] :: HNil]) = startElement(QNameFactory.caching(XtNamespace, LocalName(name))) ~ p ~ openAttrsEndElem
 
   def either[L, R](l: Parser[L], r: => Parser[R]): Parser[Either[L, R]] = (l map (Left(_))) | (r map (Right(_)))
 
-  private def strAttr(name: String): Parser[String] = requiredAttr(QNameFactory.caching(new LocalName(name)))
+  private def strAttr(name: String): Parser[String] = requiredAttr(QNameFactory.caching(LocalName(name)))
 
-  private def strAttr(ns: Namespace, name: String): Parser[String] = requiredAttr(QNameFactory.caching(ns, new LocalName(name)))
+  private def strAttr(ns: Namespace, name: String): Parser[String] = requiredAttr(QNameFactory.caching(ns, LocalName(name)))
 
 
   def inputs(url: URL): DriveInputs = {

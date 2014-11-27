@@ -6,9 +6,9 @@ class QNameTest extends FunSuite with Inside {
 
   test("QName extractor") {
 
-    val Ns = new Namespace("ns")
-    val Ln = new LocalName("ln")
-    val Pf = new Prefix("pf")
+    val Ns = Namespace("ns")
+    val Ln = LocalName("ln")
+    val Pf = Prefix("pf")
 
     val qn = QNameFactory.simple(Ns, Ln, Pf)
 

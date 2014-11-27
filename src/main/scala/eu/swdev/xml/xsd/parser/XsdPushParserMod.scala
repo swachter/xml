@@ -2,7 +2,7 @@ package eu.swdev.xml.xsd.parser
 
 import java.net.URI
 
-import eu.swdev.xml.base.{WhitespaceProcessing, Location}
+import eu.swdev.xml.base.{SomeValue, WhitespaceProcessing, Location}
 import eu.swdev.xml.name._
 import eu.swdev.xml.pushparser.XmlPushParserMod
 import eu.swdev.xml.schema._
@@ -41,6 +41,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val attrDecls = either(attributeL, attributeGroupRef).rep ~ anyAttribute.opt
 
+  lazy val attributeFormDefaultAttr: Parser[SomeValue[Form]] = formAttrDef("attributeFormDefault").some(Form.Unqualified)
+
   lazy val attributeG: Parser[AttributeElemG] = xsElem("attribute")(annotated ~ nameAttr.map(Some(_)) ~ typeAttr.opt ~ defaultAttr.opt ~ fixedAttr.opt ~ inheritableAttr.opt ~ simpleType.opt) gmap Generic[AttributeElemG]
   lazy val attributeL: Parser[AttributeElemL] = xsElem("attribute")(annotated ~ defRef ~ typeAttr.opt ~ useAttr.opt ~ defaultAttr.opt ~ fixedAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ inheritableAttr.opt ~ simpleType.opt) gmap Generic[AttributeElemL]
 
@@ -49,6 +51,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val attributeGroupRef: Parser[AttributeGroupRefElem] = xsElem("attributeGroup")(annotated ~ refAttr) gmap Generic[AttributeGroupRefElem]
 
   lazy val baseAttr: Parser[QName] = qnAttr("base")
+
+  lazy val blockDefaultAttr: Parser[SomeValue[RelationSet[BlockCtrl]]] = derivationCtrlAttr("blockDefault")(relExtension orElse relRestriction orElse relSubstitution).some(RelationSet.Items(Nil))
 
   lazy val choice: Parser[ChoiceElem] = xsElem("choice")(annotated ~ nestedParticle.rep) gmap Generic[ChoiceElem]
 
@@ -64,15 +68,17 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val complexType: Parser[ComplexTypeElem] = xsElem("complexType")(annotated ~ nameAttr.opt ~ mixedAttr.opt ~ abstractAttr.some(false) ~ complexTypeFinalAttr.opt ~ complexTypeBlockAttr.opt ~ defaultAttributesApplyAttr.opt ~ complexTypeContent) gmap Generic[ComplexTypeElem]
 
-  lazy val complexTypeBlockAttr: Parser[RelationSet[CtBlockCtrl]] = derivationCtrlAttr("block")(dcExtension orElse dcRestriction)
+  lazy val complexTypeBlockAttr: Parser[RelationSet[CtBlockCtrl]] = derivationCtrlAttr("block")(relExtension orElse relRestriction)
 
-  lazy val complexTypeFinalAttr: Parser[RelationSet[CtFinalCtrl]] = derivationCtrlAttr("final")(dcExtension orElse dcRestriction)
+  lazy val complexTypeFinalAttr: Parser[RelationSet[CtFinalCtrl]] = derivationCtrlAttr("final")(relExtension orElse relRestriction)
 
   lazy val complexTypeContent: Parser[ComplexTypeContent] = simpleContent | complexContent | complexContentAbbrev
 
   lazy val compositionGroupElem: Parser[CompositionGroupElem] = include | importElem | redefine | overrideElem
 
   lazy val defaultAttr: Parser[String] = strAttr("default")
+
+  lazy val defaultAttributesAttr: Parser[QName] = qnAttr("defaultAttributes")
 
   lazy val defaultOpenContent: Parser[DefaultOpenContentElem] = xsElem("defaultOpenContent")(annotated ~ appliesToEmptyAttr.opt ~ defaultOpenContentModeAttr.opt ~ openContentAny.opt) gmap Generic[DefaultOpenContentElem]
 
@@ -90,17 +96,23 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val element: Parser[ElementElem] = xsElem("element")(annotated ~ defRef ~ typeAttr.opt ~ substitutionGroup.opt ~ occurs ~ defaultAttr.opt ~ fixedAttr.opt ~ nillableAttr.opt ~ abstractAttr.opt ~ elementFinalAttr.opt ~ elementBlockAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ either(simpleType, complexType).opt ~ alternative.rep ~ identityConstraint.rep) gmap Generic[ElementElem ]
 
-  lazy val elementBlockAttr: Parser[RelationSet[ElemBlockCtrl]] = derivationCtrlAttr("block")(dcExtension orElse dcRestriction orElse dcSubstitution)
+  lazy val elementBlockAttr: Parser[RelationSet[ElemBlockCtrl]] = derivationCtrlAttr("block")(relExtension orElse relRestriction orElse relSubstitution)
 
-  lazy val elementFinalAttr: Parser[RelationSet[ElemFinalCtrl]] = derivationCtrlAttr("final")(dcExtension orElse dcRestriction)
+  lazy val elementFinalAttr: Parser[RelationSet[ElemFinalCtrl]] = derivationCtrlAttr("final")(relExtension orElse relRestriction)
+
+  lazy val elementFormDefaultAttr: Parser[SomeValue[Form]] = formAttrDef("elementFormDefault").some(Form.Unqualified)
 
   lazy val facet: Parser[FacetElem] = assertion | enumeration | explicitTimezone | fractionDigits | length | maxExclusive | maxInclusive | maxLength | minExclusive | minInclusive | minLength | pattern | totalDigits | whitespace
 
   lazy val field: Parser[FieldElem] = xsElem("field")(annotated ~ xPathAttr ~ xPathDefaultNamespaceAttr.opt) gmap Generic[FieldElem]
+  
+  lazy val finalDefaultAttr: Parser[SomeValue[RelationSet[TypeDerivationCtrl]]] = derivationCtrlAttr("finalDefault")(relExtension orElse relRestriction orElse relList orElse relUnion).some(RelationSet.Items(Nil))
 
   lazy val fixedAttr = strAttr("fixed")
 
-  lazy val formAttr: Parser[Form] = strAttr("form") >>= {
+  lazy val formAttr = formAttrDef("formAttr")
+
+  def formAttrDef(name: String): Parser[Form] = strAttr(name) >>= {
     case "qualified" => success(Form.Qualified)
     case "unqualified" => success(Form.Unqualified)
     case s => fail(s"invalid form: $s")
@@ -128,7 +140,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val keyref: Parser[KeyRefElem] = xsElem("keyref")(keybase ~ qnAttr("refer").opt) gmap Generic[KeyRefElem]
 
-  lazy val langAttr = optionalAttr(QNameFactory.caching(XmlNamespace, new LocalName("lang")))
+  lazy val langAttr = optionalAttr(QNameFactory.caching(XmlNamespace, LocalName("lang")))
 
   lazy val list: Parser[ListElem] = xsElem("list")(annotated ~ itemTypeAttr.opt ~ simpleType.opt) gmap Generic[ListElem]
 
@@ -147,7 +159,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val nestedParticle: Parser[NestedParticle] = element | groupRef | choice | sequence | any
 
-  lazy val namespaceAttr = optionalAttr(QNameFactory.caching(new LocalName("namespace")))
+  lazy val namespaceAttr = optionalAttr(QNameFactory.caching(LocalName("namespace")))
 
   lazy val namespaceListAttr: Parser[NamespaceDefToken] = strAttr("namespace") >>= {
     case "##any" => success(NamespaceDefToken.Any)
@@ -204,9 +216,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val refAttr = qnAttr("ref")
 
-  lazy val schema: Parser[SchemaElem]  = xsElem("schema")(idAttr ~ either(compositionGroupElem, annotation).rep ~ defaultOpenContent.opt ~ either(schemaTopGroupElem, annotation).rep) gmap Generic[SchemaElem]
+  lazy val schema: Parser[SchemaElem]  = xsElem("schema")(idAttr ~ targetNamespaceAttr.opt ~ versionAttr.opt ~ finalDefaultAttr ~ blockDefaultAttr ~ attributeFormDefaultAttr ~ elementFormDefaultAttr ~ defaultAttributesAttr.opt ~ xPathDefaultNamespaceAttr.some(XPathDefaultNamespace.Local) ~ langAttr ~ either(compositionGroupElem, annotation).rep ~ defaultOpenContent.opt ~ either(schemaTopGroupElem, annotation).rep) gmap Generic[SchemaElem]
 
-  lazy val schemaLocationAttr: Parser[String] = requiredAttr(QNameFactory.caching(new LocalName("schemaLocation")))
+  lazy val schemaLocationAttr: Parser[String] = requiredAttr(QNameFactory.caching(LocalName("schemaLocation")))
 
   lazy val schemaTopGroupElem: Parser[SchemaTopGroupElem] = redefinableGroupElem | element | attributeG | notation
 
@@ -228,7 +240,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val simpleTypeRestriction: Parser[SimpleTypeRestrictionElem] = xsElem("restriction")(annotated ~ baseAttr.opt ~ simpleRestrictionModel) gmap Generic[SimpleTypeRestrictionElem]
 
-  lazy val sourceAttr: Parser[Option[String]] = optionalAttr(QNameFactory.caching(new LocalName("source")))
+  lazy val sourceAttr: Parser[Option[String]] = optionalAttr(QNameFactory.caching(LocalName("source")))
 
   lazy val substitutionGroup: Parser[List[QName]] = qNamesAttr("substitutionGroup")
 
@@ -253,7 +265,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
     case s => fail(s"invalid use attribute: $s")
   }
 
-  lazy val valueAttr: Parser[String] = requiredAttr(QNameFactory.caching(new LocalName("value")))
+  lazy val valueAttr: Parser[String] = requiredAttr(QNameFactory.caching(LocalName("value")))
+
+  lazy val versionAttr: Parser[String] = strAttr("version")
 
   lazy val xPathAttr: Parser[String] = strAttr("xpath")
 
@@ -316,9 +330,11 @@ trait XsdPushParserMod extends XmlPushParserMod {
   //
   //
 
-  val dcExtension: PartialFunction[String, Relation.Extension.type] = { case "extension" => Relation.Extension }
-  val dcRestriction: PartialFunction[String, Relation.Restriction.type] = { case "restriction" => Relation.Restriction }
-  val dcSubstitution: PartialFunction[String, Relation.Substitution.type] = { case "substitution" => Relation.Substitution }
+  val relExtension: PartialFunction[String, Relation.Extension.type] = { case "extension" => Relation.Extension }
+  val relRestriction: PartialFunction[String, Relation.Restriction.type] = { case "restriction" => Relation.Restriction }
+  val relSubstitution: PartialFunction[String, Relation.Substitution.type] = { case "substitution" => Relation.Substitution }
+  val relList: PartialFunction[String, Relation.List.type] = { case "list" => Relation.List }
+  val relUnion: PartialFunction[String, Relation.Union.type] = { case "union" => Relation.Union }
 
   //
   //
@@ -328,7 +344,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   def either[L, R](l: Parser[L], r: => Parser[R]): Parser[Either[L, R]] = (l map (Left(_))) | (r map (Right(_)))
 
-  private def xsElem[HL <: HList](name: String)(p: => Parser[HL])(implicit ev: Prepend[Location :: HL, OpenAttrsValue :: HNil]) = startElement(QNameFactory.caching(XsdNamespace, new LocalName(name))) ~ p ~ openAttrsEndElem
+  private def xsElem[HL <: HList](name: String)(p: => Parser[HL])(implicit ev: Prepend[Location :: HL, OpenAttrsValue :: HNil]) = startElement(QNameFactory.caching(XsdNamespace, LocalName(name))) ~ p ~ openAttrsEndElem
 
   private def anyUriAttr(name: String): Parser[URI] = strAttr(name) >>= parseUri
 
@@ -336,7 +352,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   private val parseUri: String => Parser[URI] = ((s: String) => new URI(s)) onEx ((s, ex) => s"invalid uri: $s; exception: ${ex.getMessage}")
 
-  private def strAttr(name: String): Parser[String] = requiredAttr(QNameFactory.caching(new LocalName(name)))
+  private def strAttr(name: String): Parser[String] = requiredAttr(QNameFactory.caching(LocalName(name)))
 
   private def qnAttr(name: String): Parser[QName] = strAttr(name) >>= resolveQn
 

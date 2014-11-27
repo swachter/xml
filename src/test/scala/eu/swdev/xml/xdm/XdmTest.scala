@@ -15,7 +15,7 @@ class XdmTest extends FunSuite {
     doubleType.createValue("5.0", Namespaces.initial): DoubleValue
     intType.createValue("5", Namespaces.initial)
 
-    val intListType = ListType(QNameFactory.caching(new LocalName("intList")), intType)
+    val intListType = ListType(QNameFactory.caching(LocalName("intList")), intType)
 
     intListType.createValue("5 6 7", Namespaces.initial)
   }

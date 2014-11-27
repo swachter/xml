@@ -30,20 +30,20 @@ class XsdPushParserModTest extends FunSuite with Inside {
     object parsers extends XmlPushParserMod with StringInputs {
 
       val parseElement: Parser[(Option[String], String)] = for {
-        _ <- startElement(QNameFactory.caching(new Namespace("ns"), new LocalName("e")))
-        av <- optionalAttr(QNameFactory.caching(new LocalName("a")))
-        bv <- requiredAttr(QNameFactory.caching(new LocalName("b")))
+        _ <- startElement(QNameFactory.caching(Namespace("ns"), LocalName("e")))
+        av <- optionalAttr(QNameFactory.caching(LocalName("a")))
+        bv <- requiredAttr(QNameFactory.caching(LocalName("b")))
         _ <- endElement
       } yield {
         (av, bv)
       }
 
       val parseNestedElement: Parser[(Option[String], String, String)] = for {
-        _ <- startElement(QNameFactory.caching(new Namespace("ns"), new LocalName("e")))
-        av <- optionalAttr(QNameFactory.caching(new LocalName("a")))
-        bv <- requiredAttr(QNameFactory.caching(new LocalName("b")))
-        _ <- startElement(QNameFactory.caching(new Namespace("ns"), new LocalName("f")))
-        cv <- requiredAttr(QNameFactory.caching(new LocalName("c")))
+        _ <- startElement(QNameFactory.caching(Namespace("ns"), LocalName("e")))
+        av <- optionalAttr(QNameFactory.caching(LocalName("a")))
+        bv <- requiredAttr(QNameFactory.caching(LocalName("b")))
+        _ <- startElement(QNameFactory.caching(Namespace("ns"), LocalName("f")))
+        cv <- requiredAttr(QNameFactory.caching(LocalName("c")))
         _ <- endElement
         _ <- endElement
       } yield {
@@ -51,12 +51,12 @@ class XsdPushParserModTest extends FunSuite with Inside {
       }
 
       val parseNestedElement2: Parser[(Option[String], String, String)] = for {
-        _ <- startElement(QNameFactory.caching(new Namespace("ns"), new LocalName("e")))
-        av <- optionalAttr(QNameFactory.caching(new LocalName("a")))
-        _ <- startElement(QNameFactory.caching(new Namespace("ns"), new LocalName("f")))
-        cv <- requiredAttr(QNameFactory.caching(new LocalName("c")))
+        _ <- startElement(QNameFactory.caching(Namespace("ns"), LocalName("e")))
+        av <- optionalAttr(QNameFactory.caching(LocalName("a")))
+        _ <- startElement(QNameFactory.caching(Namespace("ns"), LocalName("f")))
+        cv <- requiredAttr(QNameFactory.caching(LocalName("c")))
         _ <- endElement
-        bv <- requiredAttr(QNameFactory.caching(new LocalName("b")))
+        bv <- requiredAttr(QNameFactory.caching(LocalName("b")))
         _ <- endElement
       } yield {
         (av, bv, cv)
@@ -179,15 +179,15 @@ class XsdPushParserModTest extends FunSuite with Inside {
     def parse[C <: Relation](string: String)(pf: PartialFunction[String, C]) =
       derivationCtrlStr(success(string))(pf).drive(initialState, Stream.empty)
 
-    inside(parse("#all")(dcExtension orElse dcRestriction)) {
+    inside(parse("#all")(relExtension orElse relRestriction)) {
       case (Some(RelationSet.All), _, _, _) =>
     }
 
-    inside(parse("extension restriction")(dcExtension orElse dcRestriction)) {
+    inside(parse("extension restriction")(relExtension orElse relRestriction)) {
       case (Some(RelationSet.Items(Relation.Extension :: Relation.Restriction :: Nil)), _, _, _) =>
     }
 
-    inside(parse("restriction extension")(dcExtension orElse dcRestriction)) {
+    inside(parse("restriction extension")(relExtension orElse relRestriction)) {
       case (Some(RelationSet.Items(Relation.Restriction :: Relation.Extension :: Nil)), _, _, _) =>
     }
 

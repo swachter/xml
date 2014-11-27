@@ -79,6 +79,7 @@ sealed trait AttributeElem {
   def default: Option[String]
   def fixed: Option[String]
   def inheritable: Option[Boolean]
+  def simpleType: Option[SimpleTypeElem]
 }
 
 case class AttributeElemG(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Some[String], refType: Option[QName], default: Option[String], fixed: Option[String], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends AttributeElem with SchemaTopGroupElem
@@ -136,7 +137,7 @@ case class OverrideElem(loc: Location, id: Option[String], schemaLocation: Strin
 
 case class RedefineElem(loc: Location, id: Option[String], schemaLocation: String, redefines: Seq[Either[RedefinableGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
 
-case class SchemaElem(loc: Location, id: Option[String], compositions: Seq[Either[CompositionGroupElem, AnnotationElem]], defaultOpenContent: Option[DefaultOpenContentElem], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String])
+case class SchemaElem(loc: Location, id: Option[String], targetNamespace: Option[URI], version: Option[String], finalDefault: SomeValue[RelationSet[TypeDerivationCtrl]], blockDefault: SomeValue[RelationSet[BlockCtrl]], attributeFormDefault: SomeValue[Form], elementFormDefault: SomeValue[Form], defaultAttributes: Option[QName], xPathDefaultNamespace: SomeValue[XPathDefaultNamespace], lang: Option[String], compositions: Seq[Either[CompositionGroupElem, AnnotationElem]], defaultOpenContent: Option[DefaultOpenContentElem], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String])
 
 case class SelectorElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[XPathDefaultNamespace], openAttrs: Map[QName, String])
 

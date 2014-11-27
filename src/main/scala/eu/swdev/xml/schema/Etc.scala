@@ -5,19 +5,21 @@ import java.net.URI
 import eu.swdev.xml.name.{Namespace, QName}
 
 sealed trait Relation
-sealed trait CtDerivationMethod extends Relation
-sealed trait StDerivationMethod extends Relation
-sealed trait CtBlockCtrl extends Relation
+sealed trait TypeDerivationCtrl extends Relation
+sealed trait CtDerivationCtrl extends TypeDerivationCtrl
+sealed trait StDerivationCtrl extends TypeDerivationCtrl
+sealed trait BlockCtrl extends Relation
+sealed trait CtBlockCtrl extends BlockCtrl
+sealed trait ElemBlockCtrl extends BlockCtrl
 sealed trait CtFinalCtrl extends Relation
-sealed trait ElemBlockCtrl extends Relation
 sealed trait ElemFinalCtrl extends Relation
 
 object Relation {
-  object Extension    extends CtDerivationMethod                         with CtBlockCtrl with CtFinalCtrl with ElemBlockCtrl with ElemFinalCtrl
-  object Restriction  extends CtDerivationMethod with StDerivationMethod with CtBlockCtrl with CtFinalCtrl with ElemBlockCtrl with ElemFinalCtrl
-  object Substitution extends                                                                                   ElemBlockCtrl
-  object List         extends                         StDerivationMethod
-  object Union        extends                         StDerivationMethod
+  object Extension    extends CtDerivationCtrl                       with CtBlockCtrl with CtFinalCtrl with ElemBlockCtrl with ElemFinalCtrl
+  object Restriction  extends CtDerivationCtrl with StDerivationCtrl with CtBlockCtrl with CtFinalCtrl with ElemBlockCtrl with ElemFinalCtrl
+  object Substitution extends                                                                               ElemBlockCtrl
+  object List         extends                       StDerivationCtrl
+  object Union        extends                       StDerivationCtrl
 }
 
 case class DisallowedNames(qNames: Set[QName], defined: Boolean, sibling: Boolean)

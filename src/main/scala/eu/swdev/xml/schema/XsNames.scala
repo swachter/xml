@@ -8,10 +8,10 @@ import eu.swdev.xml.name.{LocalName, Namespace, Prefix, QNameFactory}
   */
 object XsNames {
 
-  val XS_NAMESPACE = new Namespace(XMLConstants.W3C_XML_SCHEMA_NS_URI)
-  val XS_PREFIX = new Prefix("xs")
+  val XS_NAMESPACE = Namespace(XMLConstants.W3C_XML_SCHEMA_NS_URI)
+  val XS_PREFIX = Prefix("xs")
 
-  private def xsTypeName(localName: String) = QNameFactory.caching(XS_NAMESPACE, new LocalName(localName), XS_PREFIX)
+  private def xsTypeName(localName: String) = QNameFactory.caching(XS_NAMESPACE, LocalName(localName), XS_PREFIX)
 
   val ANY_TYPE = xsTypeName("anyType")
   val ANY_SIMPLE_TYPE = xsTypeName("anySimpleType")
