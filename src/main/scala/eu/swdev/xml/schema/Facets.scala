@@ -7,84 +7,155 @@ import scala.util.matching.Regex
 
 object FacetsMod {
 
-  class KV[K, V]
+  class KV[+K, V]
 
-  trait Facets[X] {
+  case class Facets[X](underlying: Map[Facet, FacetValue[X]]) {
 
-    trait Facet {
-      type FV
-      def doCheck(x: X, fv: FV): Boolean
-    }
+    def get[K <: Facet, V <: FacetValue[X]](k : K)(implicit ev : KV[K, V]) : Option[V] = underlying.get(k).asInstanceOf[Option[V]]
 
-    def facets: HMap[KV]
+    def +[K <: Facet, V <: FacetValue[X]](kv: (K, V))(implicit ev: KV[K, V]) = Facets[X](underlying + kv)
 
-    def check[F <: Facet](facet: F, x: X)(implicit ev: KV[F, facet.FV]): Boolean = facets.get(facet) match {
-      case Some(fv) => facet.doCheck(x, fv)
-      case None => true
-    }
+    def check(x: X): Boolean = underlying.values.forall(_.check(x))
+
   }
 
-  trait LengthFacets[X] {
-    self: Facets[X] =>
+  trait Facet
 
+  trait FacetValue[X] {
+    type V
+    def check(x: X): Boolean
+    def isRestriction(v: V): Boolean
+  }
+
+  abstract class FacetOp[F <: Facet, X](facets: Facets[X], facet: F) {
+
+    type FV <: FacetValue[X]
+
+    implicit val kv = new KV[F, FV]
+
+    def set(value: FV#V): Facets[X] = facets + (facet, createFacetValue(value))
+
+    def createFacetValue(value: FV#V): FV
+
+  }
+
+  implicit class LengthFacetOps[X : HasLength](facets: Facets[X]) {
+
+    case class LengthFacetValue(value: Int) extends FacetValue[X] {
+      type V = Int
+      override def check(x: X): Boolean = implicitly[HasLength[X]].getLength(x) == value
+      override def isRestriction(v: Int): Boolean = v == value
+    }
+
+    def length = new FacetOp(facets, LengthFacet) {
+
+      override type FV = LengthFacetValue
+
+      override def createFacetValue(value: Int): FV = new LengthFacetValue(value)
+    }
+
+
+  }
+
+
+  trait HasLength[X] {
     def getLength(x: X): Int
-
-    object Length extends Facet {
-      type FV = Int
-      override def doCheck(x: X, fv: Int): Boolean = getLength(x) == fv
-    }
-
-    implicit val lkv = new KV[Length.type, Int]
-
-    object MinLength extends Facet {
-      type FV = Int
-      override def doCheck(x: X, fv: Int): Boolean = getLength(x) >= fv
-    }
-
-    implicit val milkv = new KV[MinLength.type, Int]
-
-    object MaxLength extends Facet {
-      type FV = Int
-      override def doCheck(x: X, fv: Int): Boolean = getLength(x) <= fv
-    }
-
-    implicit val malkv = new KV[MaxLength.type, Int]
-
   }
 
-  trait GeneralFacets[X] {
-    self: Facets[X] =>
-
-    def getString(x: X): String
-
-    object Patterns extends Facet {
-      type FV = Seq[Regex]
-      override def doCheck(x: X, fv: Seq[Regex]): Boolean = fv.exists(_.unapplySeq(getString(x)).isDefined)
+  object HasLength {
+    implicit def listHasLength[X] = new HasLength[List[X]] {
+      override def getLength(x: List[X]): Int = x.size
     }
-
-    implicit def patternsKv = new KV[Patterns.type, Seq[Regex]]
-
-    object Enums extends Facet {
-      type FV = Seq[X]
-      override def doCheck(x: X, fv: Seq[X]): Boolean = fv.exists(_ == x)
-    }
-
-    implicit val enumsKv = new KV[Patterns.type, Seq[X]]
   }
 
+  object LengthFacet extends Facet
 
-  case class UnionFacets(facets: HMap[KV]) extends Facets[SimpleVal] with GeneralFacets[SimpleVal] {
-    override def getString(x: SimpleVal): String = x.toString
-  }
 
-  case class ListFacets(facets: HMap[KV]) extends Facets[List[AtomicVal]] with GeneralFacets[List[AtomicVal]] with LengthFacets[List[AtomicVal]] {
-    override def getString(x: List[AtomicVal]): String = x.toString
-    override def getLength(x: List[AtomicVal]): Int = x.size
-  }
 
-  object ListFacets {
-    val empty = ListFacets(new HMap())
-  }
+//  trait Facet {
+//
+//    type FV
+//
+//    implicit val kv = new KV[this.type, FV]
+//
+//    def doCheck(x: X, fv: FV): Boolean
+//
+//    def check(x: X, hMap: HMap[KV]): Boolean = hMap.get(this) match {
+//      case Some(fv) => doCheck(x, fv)
+//      case None => true
+//    }
+//
+//    def restrict(fv: FV) = create(hMap + (this, fv))
+//  }
+//
+//
+//
+//  trait Facets[X] {
+//
+//    type FACETS
+//
+//    def hMap: HMap[KV]
+//
+//    def create(facets: HMap[KV]): FACETS
+//
+//  }
+
+//  trait LengthFacets[X] {
+//    self: Facets[X] =>
+//
+//    def getLength(x: X): Int
+//
+//    object Length extends Facet {
+//      type FV = Int
+//      override def doCheck(x: X, fv: Int): Boolean = getLength(x) == fv
+//    }
+//
+//    object MinLength extends Facet {
+//      type FV = Int
+//      override def doCheck(x: X, fv: Int): Boolean = getLength(x) >= fv
+//    }
+//
+//    object MaxLength extends Facet {
+//      type FV = Int
+//      override def doCheck(x: X, fv: Int): Boolean = getLength(x) <= fv
+//    }
+//
+//  }
+//
+//  trait GeneralFacets[X] {
+//    self: Facets[X] =>
+//
+//    def getString(x: X): String
+//
+//    object Patterns extends Facet {
+//      type FV = Seq[Regex]
+//      override def doCheck(x: X, fv: Seq[Regex]): Boolean = fv.exists(_.unapplySeq(getString(x)).isDefined)
+//    }
+//
+//    object Enums extends Facet {
+//      type FV = Seq[X]
+//      override def doCheck(x: X, fv: Seq[X]): Boolean = fv.exists(_ == x)
+//    }
+//
+//  }
+//
+//
+//  case class UnionFacets(hMap: HMap[KV]) extends Facets[SimpleVal] with GeneralFacets[SimpleVal] {
+//    type FACETS = UnionFacets
+//    override def getString(x: SimpleVal): String = x.toString
+//    override def create(facets: HMap[KV]) = UnionFacets(facets)
+//  }
+//
+//  case class ListFacets(hMap: HMap[KV]) extends Facets[List[AtomicVal]] with GeneralFacets[List[AtomicVal]] with LengthFacets[List[AtomicVal]] {
+//    type FACETS = ListFacets
+//    override def getString(x: List[AtomicVal]): String = x.toString
+//    override def getLength(x: List[AtomicVal]): Int = x.size
+//    override def create(facets: HMap[KV]) = ListFacets(facets)
+//  }
+//
+//  object ListFacets {
+//    val empty = ListFacets(new HMap())
+//  }
 
 }
 
