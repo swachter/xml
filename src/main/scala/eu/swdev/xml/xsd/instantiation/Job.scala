@@ -1,6 +1,7 @@
 package eu.swdev.xml.xsd.instantiation
 
-import eu.swdev.xml.name.{Namespace, QNameFactory, QName}
+import eu.swdev.xml.base.SomeValue
+import eu.swdev.xml.name.{LocalName, Namespace, QNameFactory, QName}
 import eu.swdev.xml.schema.ComplexType
 import eu.swdev.xml.schema._
 import eu.swdev.xml.xsd.cmp._
@@ -28,6 +29,12 @@ trait JobMod {
       go(run(state))
     }
 
+    def &[O2](p2: => Job[O2]): Job[(A, O2)] = for {
+      v1 <- this
+      v2 <- p2
+    } yield (v1, v2)
+
+
   }
 
   object Job {
@@ -41,6 +48,8 @@ trait JobMod {
 
     def sequence[A](seq: Seq[Job[A]]): Job[Seq[A]] = seq.foldRight(unit(Seq[A]()))((job, acc) => map2(job, acc)(_ +: _))
 
+    def traverse[A, B](as: Seq[A])(f: A => Job[B]): Job[Seq[B]] =
+      as.foldRight(unit(Seq[B]()))((a, p) => map2(f(a), p)(_ +: _))
   }
 
   trait Step[+A] {
@@ -236,15 +245,34 @@ trait JobMod {
   // part 2; 4.1.2
   def simpleTypeJob(st: SimpleTypeElem): Job[SimpleType] = st.derivation match {
     case d: SimpleTypeRestrictionElem => for {
+      typeName <- typeName(st.name)
       baseType <- d.base.fold(simpleTypeJob(d.tpe.get))(await[SimpleType](_))
-    } yield ???
+      facets <- Job.traverse(d.facets)(facetJob(_))
+    } yield {
+      baseType match {
+        case bt: AtomicType => ???
+        case bt: ListType => ListType(typeName, bt.itemType)
+        case bt: UnionType => UnionType(typeName, bt.memberTypes)
+      }
+    }
     case d: ListElem => for {
+      typeName <- typeName(st.name)
       itemType <- d.itemType.fold(simpleTypeJob(d.simpleType.get))(await[SimpleType](_))
-    } yield ??? // ListType(st.name, itemType)
-    case d: UnionElem => ???
+    } yield ListType(typeName, itemType)
+    case d: UnionElem => for {
+      typeName <- typeName(st.name)
+      memberTypes <- d.memberTypes.fold(Job.unit(Seq[SimpleType]()))(qns => Job.traverse(qns)(await[SimpleType](_))) & Job.traverse(d.simpleTypes)(simpleTypeJob(_))
+    } yield UnionType(typeName, memberTypes._1 ++ memberTypes._2)
   }
 
-  def baseTypeJob(str: SimpleTypeRestrictionElem): Job[SimpleType] = str.base.fold(simpleTypeJob(str.tpe.get))(await[SimpleType](_))
+  def facetJob(fe: FacetElem): Job[Unit] = ???
+
+  // part 2; 4.1.2
+  def typeName(someName: SomeValue[String]): Job[QName] = for {
+    conf <- getConf
+  } yield QNameFactory.caching(conf.schemaTargetNamespace, LocalName(someName.value))
+
+  //def baseTypeJob(str: SimpleTypeRestrictionElem): Job[SimpleType] = str.base.fold(simpleTypeJob(str.tpe.get))(await[SimpleType](_))
 
   def convertNamespaceTokens(list: List[NamespaceItemToken], conf: JobConf): Set[Namespace] = {
     list.map {

@@ -101,15 +101,17 @@ sealed trait SimpleType extends DerivedType {
   val accept: Accept[SimpleTypeVisitor]
 }
 
-sealed trait AtomicOrListType extends SimpleType
+sealed trait AtomicOrListType extends SimpleType {
+
+}
 
 sealed trait AtomicType extends AtomicOrListType {
 
   type Data
 
-  val accept: Accept[AtomicTypeVisitor]
-
   def whitespaceFacet: WhitespaceFacet
+
+  val accept: Accept[AtomicTypeVisitor]
 
   final def parse(string: String, ns: Namespaces): Data = {
     doParse(whitespaceFacet.whitespaceProcess.process(string), ns)
@@ -123,7 +125,7 @@ sealed trait NonStringAtomicType extends AtomicType {
   override def whitespaceFacet: WhitespaceFacet = WhitespaceFacet.COLLAPSE_FIXED
 }
 
-sealed case class UnionType private(name: QName, memberTypes: List[AtomicOrListType]) extends SimpleType {
+sealed case class UnionType(name: QName, memberTypes: List[AtomicOrListType]) extends SimpleType {
   self =>
   override def baseType = anySimpleType
   require(!memberTypes.isEmpty, "a union type must have at least one member type")
@@ -148,7 +150,7 @@ object UnionType {
  * @param itemType If the item type is an atomic type then Right[AtomicType] else the item type is a union type
  *                 then the list of its atomic types.
  */
-sealed case class ListType private(name: QName, itemType: Either[AtomicType, List[AtomicType]]) extends AtomicOrListType {
+sealed case class ListType(name: QName, itemType: Either[AtomicType, List[AtomicType]]) extends AtomicOrListType {
   self =>
   override def baseType = anySimpleType
   override val accept = new Accept[SimpleTypeVisitor] {
@@ -205,7 +207,9 @@ object anyAtomicType extends AtomicType {
   override def name: QName = ANY_ATOMIC_TYPE
   override def baseType: Type = anySimpleType
   override def doParse(string: String, ns: Namespaces): Data = throw new IllegalStateException("anyAtomicType is abstract")
+
   override def whitespaceFacet: WhitespaceFacet = WhitespaceFacet.PRESERVE_UNFIXED
+
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -217,7 +221,9 @@ object untypedAtomicType extends AtomicType {
   override def name: QName = UNTYPED_ATOMIC
   override def baseType: Type = anyAtomicType
   override def doParse(string: String, ns: Namespaces): Data = string
+
   override def whitespaceFacet: WhitespaceFacet = WhitespaceFacet.PRESERVE_UNFIXED
+
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
