@@ -117,7 +117,9 @@ sealed trait AtomicType extends AtomicOrListType {
     doParse(whitespaceFacet.whitespaceProcess.process(string), ns)
   }
 
-  def doParse(string: String, ns: Namespaces): Data
+  def lexicalRep(data: Data): String
+
+  protected def doParse(string: String, ns: Namespaces): Data
 
 }
 
@@ -207,6 +209,7 @@ object anyAtomicType extends AtomicType {
   override def name: QName = ANY_ATOMIC_TYPE
   override def baseType: Type = anySimpleType
   override def doParse(string: String, ns: Namespaces): Data = throw new IllegalStateException("anyAtomicType is abstract")
+  override def lexicalRep(data: Data): String = throw new IllegalStateException("anyAtomicType is abstract")
 
   override def whitespaceFacet: WhitespaceFacet = WhitespaceFacet.PRESERVE_UNFIXED
 
@@ -221,6 +224,7 @@ object untypedAtomicType extends AtomicType {
   override def name: QName = UNTYPED_ATOMIC
   override def baseType: Type = anyAtomicType
   override def doParse(string: String, ns: Namespaces): Data = string
+  override def lexicalRep(data: Data): String = data
 
   override def whitespaceFacet: WhitespaceFacet = WhitespaceFacet.PRESERVE_UNFIXED
 
@@ -239,6 +243,7 @@ sealed case class BooleanType(name: QName, baseType: Type) extends NonStringAtom
   } else {
     throw new IllegalArgumentException(s"invalid boolean value: $string")
   }
+  override def lexicalRep(data: Data): String = String.valueOf(data)
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -248,6 +253,7 @@ sealed case class DoubleType(name: QName, baseType: Type) extends NonStringAtomi
   self =>
   override type Data = Double
   override def doParse(string: String, ns: Namespaces): Data = string.toDouble
+  override def lexicalRep(data: Data): String = String.valueOf(data)
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -257,6 +263,7 @@ sealed case class DecimalType(name: QName, baseType: Type) extends NonStringAtom
   self =>
   override type Data = BigDecimal
   override def doParse(string: String, ns: Namespaces): Data = BigDecimal(string)
+  override def lexicalRep(data: Data): String = data.toString()
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -266,6 +273,7 @@ sealed case class IntegerType(name: QName, baseType: Type) extends NonStringAtom
   self =>
   override type Data = BigInt
   override def doParse(string: String, ns: Namespaces): Data = BigInt(string)
+  override def lexicalRep(data: Data): String = String.valueOf(data)
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -275,6 +283,7 @@ sealed case class LongType(name: QName, baseType: Type) extends NonStringAtomicT
   self =>
   override type Data = Long
   override def doParse(string: String, ns: Namespaces): Data = string.toLong
+  override def lexicalRep(data: Data): String = String.valueOf(data)
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -284,6 +293,7 @@ sealed case class IntType(name: QName, baseType: Type) extends NonStringAtomicTy
   self =>
   override type Data = Int
   override def doParse(string: String, ns: Namespaces): Data = string.toInt
+  override def lexicalRep(data: Data): String = String.valueOf(data)
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -293,6 +303,7 @@ sealed case class StringType(name: QName, baseType: Type, whitespaceFacet: White
   self =>
   override type Data = String
   override def doParse(string: String, ns: Namespaces): Data = string
+  override def lexicalRep(data: Data): String = data
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -305,6 +316,7 @@ sealed case class QNameType(name: QName, baseType: Type) extends NonStringAtomic
     val (opf, ln) = QName.parse(string)
     QNameFactory.caching(opf.map(ns.namespaceForPrefix(_).get).getOrElse(NoNamespace), ln, opf.getOrElse(NoPrefix))
   }
+  override def lexicalRep(data: Data): String = String.valueOf(data)
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }

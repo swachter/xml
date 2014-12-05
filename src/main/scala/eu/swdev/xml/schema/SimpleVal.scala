@@ -4,7 +4,7 @@ import eu.swdev.xml.name.Namespaces
 
 trait SimpleVal
 
-trait AtomicVal {
+trait AtomicVal extends SimpleVal {
   type TPE <: AtomicType
   def tpe: TPE
   def data: TPE#Data

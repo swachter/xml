@@ -297,9 +297,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val assertion: Parser[AssertElem] = xsElem("assertion")(annotated ~ testAttr.opt ~ xPathDefaultNamespaceAttr.opt) gmap Generic[AssertElem]
 
   lazy val explicitTimezone: Parser[ExplicitTimezoneElem] = facet("explicitTimezone", (s: String) => s match {
-    case "optional" => success(ExplicitTimezone.Optional)
-    case "required" => success(ExplicitTimezone.Required)
-    case "prohibited" => success(ExplicitTimezone.Prohibited)
+    case "optional" => success(ExplicitTimeZone.Optional)
+    case "required" => success(ExplicitTimeZone.Required)
+    case "prohibited" => success(ExplicitTimeZone.Prohibited)
     case s => fail(s"invalid explicit timezone value: $s")
   }) gmap Generic[ExplicitTimezoneElem]
 

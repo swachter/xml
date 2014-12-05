@@ -28,12 +28,12 @@ object DisallowedNames {
   val empty = DisallowedNames(Set[QName](), false, false)
 }
 
-trait ExplicitTimezone
+trait ExplicitTimeZone
 
-object ExplicitTimezone {
-  object Optional extends ExplicitTimezone
-  object Required extends ExplicitTimezone
-  object Prohibited extends ExplicitTimezone
+object ExplicitTimeZone {
+  object Optional extends ExplicitTimeZone
+  object Required extends ExplicitTimeZone
+  object Prohibited extends ExplicitTimeZone
 }
 
 sealed trait Form
