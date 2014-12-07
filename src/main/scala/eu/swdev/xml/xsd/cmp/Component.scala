@@ -3,7 +3,7 @@ package eu.swdev.xml.xsd.cmp
 import java.net.URI
 
 import eu.swdev.xml.base.{SomeValue, WhitespaceProcessing, Location}
-import eu.swdev.xml.name.QName
+import eu.swdev.xml.name.{Namespaces, QName}
 import eu.swdev.xml.schema._
 
 /**
@@ -25,6 +25,25 @@ sealed trait RedefinableGroupElem extends SchemaTopGroupElem
 sealed trait SchemaTopGroupElem
 
 sealed trait SimpleDerivationGroupElem
+
+//
+
+sealed trait FacetSpec
+
+trait HasFacetSpecs {
+
+  def facets: Seq[FacetElem]
+
+  def facetSpecs: Seq[FacetSpec] = {
+    val (fss, ees, pes) = facets.foldRight((List[FacetSpec](), List[EnumerationElem](), List[PatternElem]()))((i, acc) => i match {
+      case fs: FacetSpec => (fs :: acc._1, acc._2, acc._3)
+      case ee: EnumerationElem => (acc._1, ee :: acc._2, acc._3)
+      case pe: PatternElem => (acc._1, acc._2, pe :: acc._3)
+    })
+    val t1 = if (ees.isEmpty) fss else EnumerationsFacetSpec(ees) :: fss
+    if (pes.isEmpty) t1 else PatternsFacetSpec(pes) :: t1
+  }
+}
 
 //
 
@@ -149,11 +168,11 @@ case class SimpleContentElem(loc: Location, id: Option[String], annotation: Opti
 
 case class SimpleContentExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivation
 
-case class SimpleContentRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, simpleType: Option[SimpleTypeElem], facets: Seq[FacetElem], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivation
+case class SimpleContentRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, simpleType: Option[SimpleTypeElem], facets: Seq[FacetElem], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivation with HasFacetSpecs
 
 case class SimpleTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: SomeValue[String], finl: SomeValue[RelationSet[TypeDerivationCtrl]], derivation: SimpleDerivationGroupElem, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
-case class SimpleTypeRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: Option[QName], tpe: Option[SimpleTypeElem], facets: Seq[FacetElem], openAttrs: Map[QName, String]) extends SimpleDerivationGroupElem
+case class SimpleTypeRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: Option[QName], tpe: Option[SimpleTypeElem], facets: Seq[FacetElem], openAttrs: Map[QName, String]) extends SimpleDerivationGroupElem with HasFacetSpecs
 
 case class UniqueElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], sel: Option[(SelectorElem, List[FieldElem])], openAttrs: Map[QName, String]) extends IdentityConstraintGroupElem
 
@@ -161,33 +180,37 @@ case class UnionElem(loc: Location, id: Option[String], annotation: Option[Annot
 
 //
 
-case class AssertElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: Option[String], xPathDefaultNamespace: Option[XPathDefaultNamespace], openAttrs: Map[QName, String]) extends FacetElem
+case class AssertElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: Option[String], xPathDefaultNamespace: Option[XPathDefaultNamespace], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class ExplicitTimezoneElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: ExplicitTimeZone, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
+case class ExplicitTimezoneElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: ExplicitTimeZone, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class EnumerationElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, openAttrs: Map[QName, String]) extends FacetElem
+case class EnumerationElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem
 
-case class FractionDigitsElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
+case class FractionDigitsElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class LengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
+case class LengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class MaxExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
+case class MaxExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class MaxInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
+case class MaxInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class MaxLengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
+case class MaxLengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class MinExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
+case class MinExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class MinInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
+case class MinInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class MinLengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
+case class MinLengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
 case class PatternElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, openAttrs: Map[QName, String]) extends FacetElem
 
-case class TotalDigitsElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
+case class TotalDigitsElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class WhitespaceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: WhitespaceProcessing, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem
+case class WhitespaceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: WhitespaceProcessing, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+
+case class EnumerationsFacetSpec(value: Seq[EnumerationElem]) extends FacetSpec
+
+case class PatternsFacetSpec(value: Seq[PatternElem]) extends FacetSpec
 
 //
 

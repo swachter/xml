@@ -12,10 +12,10 @@ class XdmTest extends FunSuite {
 
     import Xdm._
 
-    doubleType.createValue("5.0", Namespaces.initial): DoubleValue
-    intType.createValue("5", Namespaces.initial)
+    doubleType.createValue("5.0", Namespaces.initial): Either[String, DoubleValue]
+    intType.createVal("5", Namespaces.initial)
 
-    val intListType = ListType(QNameFactory.caching(LocalName("intList")), intType)
+    val intListType = ListType(QNameFactory.caching(LocalName("intList")), anySimpleType, Facets.empty[ListVal], intType)
 
     intListType.createValue("5 6 7", Namespaces.initial)
   }

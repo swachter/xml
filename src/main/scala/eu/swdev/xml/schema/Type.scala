@@ -2,8 +2,10 @@ package eu.swdev.xml.schema
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import eu.swdev.xml.base.{True, False, Unknown, Ternary}
+import eu.swdev.xml.base._
 import eu.swdev.xml.name._
+
+import scala.util.{Failure, Success, Try}
 
 /**
  *
@@ -96,8 +98,10 @@ sealed case class ComplexType(
 sealed trait Assertion
 
 sealed trait SimpleType extends DerivedType {
+  type VAL <: SimpleVal
   def derivation = Relation.Restriction
-
+  def facets: Facets[VAL]
+  def createVal(lexicalRep: String, ns: Namespaces): Either[String, VAL]
   val accept: Accept[SimpleTypeVisitor]
 }
 
@@ -108,42 +112,55 @@ sealed trait AtomicOrListType extends SimpleType {
 sealed trait AtomicType extends AtomicOrListType {
 
   type Data
+  type VAL = AtomicVal[Data]
 
   def whitespaceFacet: WhitespaceFacet
 
   val accept: Accept[AtomicTypeVisitor]
 
-  final def parse(string: String, ns: Namespaces): Data = {
+  final def parse(string: String, ns: Namespaces): Either[String, Data] = {
     doParse(whitespaceFacet.whitespaceProcess.process(string), ns)
   }
 
+  final def createVal(lexicalRep: String, ns: Namespaces): Either[String, VAL] = parse(lexicalRep, ns).right.map(AtomicVal(this, _))
+
   def lexicalRep(data: Data): String
 
-  protected def doParse(string: String, ns: Namespaces): Data
+  protected def doParse(string: String, ns: Namespaces): Either[String, Data]
 
+  protected def tryParse[X](parse: => X): Either[String, X] = Try { parse } match {
+    case Success(x) => Right(x)
+    case Failure(e) => Left(e.getMessage)
+  }
 }
 
 sealed trait NonStringAtomicType extends AtomicType {
   override def whitespaceFacet: WhitespaceFacet = WhitespaceFacet.COLLAPSE_FIXED
 }
 
-sealed case class UnionType(name: QName, memberTypes: List[AtomicOrListType]) extends SimpleType {
+sealed case class UnionType(name: QName, baseType: SimpleType, facets: Facets[SimpleVal], memberTypes: List[AtomicOrListType]) extends SimpleType {
   self =>
-  override def baseType = anySimpleType
+
+  type VAL = SimpleVal
+
   require(!memberTypes.isEmpty, "a union type must have at least one member type")
+
+  override def createVal(lexicalRep: String, ns: Namespaces): Either[String, VAL] = unionVal(memberTypes)(lexicalRep, ns)
+
   override val accept = new Accept[SimpleTypeVisitor] {
     override def apply[R, P](v: SimpleTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
+
 }
 
 object UnionType {
-  def apply(name: QName, memberTypes: Seq[SimpleType]): UnionType = {
+  def apply(name: QName, baseType: SimpleType, facets: Facets[SimpleVal], memberTypes: Seq[SimpleType]): UnionType = {
     val mts = memberTypes.foldRight(List[AtomicOrListType]())((t, accu) => t match {
       case t: AtomicOrListType => t :: accu
-      case UnionType(_, mt) => mt ++ accu
+      case UnionType(_, _, _, mt) => mt ++ accu
       case `anySimpleType` => throw new IllegalArgumentException("anySimpleType can not be a member type of a union")
     })
-    new UnionType(name, mts)
+    new UnionType(name, baseType, facets, mts)
   }
 }
 
@@ -152,20 +169,31 @@ object UnionType {
  * @param itemType If the item type is an atomic type then Right[AtomicType] else the item type is a union type
  *                 then the list of its atomic types.
  */
-sealed case class ListType(name: QName, itemType: Either[AtomicType, List[AtomicType]]) extends AtomicOrListType {
+sealed case class ListType(name: QName, baseType: SimpleType, facets: Facets[ListVal], itemType: Either[AtomicType, List[AtomicType]]) extends AtomicOrListType {
   self =>
-  override def baseType = anySimpleType
+
+  override type VAL = ListVal
+
+  override def createVal(lexicalRep: String, ns: Namespaces): Either[String, VAL] = {
+    val createItemValueFunction: String => Either[String, AtomicVal[_]] = itemType match {
+      case Left(at) => s => at.createVal(s, ns)
+      case Right(l) => s => unionVal(l)(s, ns)
+    }
+    val eitherItems = eu.swdev.util.traverse(WhitespaceProcessing.Collapse.process(lexicalRep).split(' ').toList)(createItemValueFunction)
+    eitherItems.right.map(ListVal(this, _))
+  }
+
   override val accept = new Accept[SimpleTypeVisitor] {
     override def apply[R, P](v: SimpleTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
 }
 
 object ListType {
-  def apply(name: QName, itemType: SimpleType): ListType = {
+  def apply(name: QName, baseType: SimpleType, facets: Facets[ListVal], itemType: SimpleType): ListType = {
     val either = itemType match {
       case t: AtomicType => Left(t)
       case t: ListType => throw new IllegalArgumentException("a list item type must not be a list type")
-      case UnionType(_, memberTypes) => {
+      case UnionType(_, _, _, memberTypes) => {
         if (memberTypes collect { case _: ListType => ()} isEmpty) {
           Right(memberTypes.asInstanceOf[List[AtomicType]])
         } else {
@@ -174,7 +202,7 @@ object ListType {
       }
       case `anySimpleType` => throw new IllegalArgumentException("anySimpleType can not be a list item type")
     }
-    new ListType(name, either)
+    new ListType(name, baseType, facets, either)
   }
 }
 
@@ -198,6 +226,9 @@ object anySimpleType extends SimpleType {
   self =>
   override def name: QName = ANY_SIMPLE_TYPE
   override def baseType: Type = anyType
+  override type VAL = Nothing
+  override def facets = Facets.none
+  final def createVal(lexicalRep: String, ns: Namespaces) = throw new IllegalStateException("anySimpleType is abstract")
   override val accept = new Accept[SimpleTypeVisitor] {
     override def apply[R, P](v: SimpleTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -210,6 +241,8 @@ object anyAtomicType extends AtomicType {
   override def baseType: Type = anySimpleType
   override def doParse(string: String, ns: Namespaces): Data = throw new IllegalStateException("anyAtomicType is abstract")
   override def lexicalRep(data: Data): String = throw new IllegalStateException("anyAtomicType is abstract")
+  override type VAL = AtomicVal[Nothing]
+  override def facets = Facets.empty
 
   override def whitespaceFacet: WhitespaceFacet = WhitespaceFacet.PRESERVE_UNFIXED
 
@@ -223,8 +256,10 @@ object untypedAtomicType extends AtomicType {
   override type Data = String
   override def name: QName = UNTYPED_ATOMIC
   override def baseType: Type = anyAtomicType
-  override def doParse(string: String, ns: Namespaces): Data = string
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = Right(string)
   override def lexicalRep(data: Data): String = data
+  override type VAL = AtomicVal[String]
+  override def facets = Facets.empty
 
   override def whitespaceFacet: WhitespaceFacet = WhitespaceFacet.PRESERVE_UNFIXED
 
@@ -236,14 +271,16 @@ object untypedAtomicType extends AtomicType {
 sealed case class BooleanType(name: QName, baseType: Type) extends NonStringAtomicType {
   self =>
   override type Data = Boolean
-  override def doParse(string: String, ns: Namespaces): Data = if (string == "true" || string == "1") {
-    true
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = if (string == "true" || string == "1") {
+    Right(true)
   } else if (string == "false" || string == "0") {
-    false
+    Right(false)
   } else {
-    throw new IllegalArgumentException(s"invalid boolean value: $string")
+    Left(s"invalid boolean value: $string")
   }
   override def lexicalRep(data: Data): String = String.valueOf(data)
+  override type VAL = AtomicVal[Boolean]
+  override def facets = Facets.empty
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -252,8 +289,10 @@ sealed case class BooleanType(name: QName, baseType: Type) extends NonStringAtom
 sealed case class DoubleType(name: QName, baseType: Type) extends NonStringAtomicType {
   self =>
   override type Data = Double
-  override def doParse(string: String, ns: Namespaces): Data = string.toDouble
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = tryParse(string.toDouble)
   override def lexicalRep(data: Data): String = String.valueOf(data)
+  override type VAL = AtomicVal[Double]
+  override def facets = Facets.empty
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -262,8 +301,10 @@ sealed case class DoubleType(name: QName, baseType: Type) extends NonStringAtomi
 sealed case class DecimalType(name: QName, baseType: Type) extends NonStringAtomicType {
   self =>
   override type Data = BigDecimal
-  override def doParse(string: String, ns: Namespaces): Data = BigDecimal(string)
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = tryParse(BigDecimal(string))
   override def lexicalRep(data: Data): String = data.toString()
+  override type VAL = AtomicVal[BigDecimal]
+  override def facets = Facets.empty
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -272,8 +313,10 @@ sealed case class DecimalType(name: QName, baseType: Type) extends NonStringAtom
 sealed case class IntegerType(name: QName, baseType: Type) extends NonStringAtomicType {
   self =>
   override type Data = BigInt
-  override def doParse(string: String, ns: Namespaces): Data = BigInt(string)
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = tryParse(BigInt(string))
   override def lexicalRep(data: Data): String = String.valueOf(data)
+  override type VAL = AtomicVal[BigInt]
+  override def facets = Facets.empty
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -282,8 +325,10 @@ sealed case class IntegerType(name: QName, baseType: Type) extends NonStringAtom
 sealed case class LongType(name: QName, baseType: Type) extends NonStringAtomicType {
   self =>
   override type Data = Long
-  override def doParse(string: String, ns: Namespaces): Data = string.toLong
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = tryParse(string.toLong)
   override def lexicalRep(data: Data): String = String.valueOf(data)
+  override type VAL = AtomicVal[Long]
+  override def facets = Facets.empty
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -292,8 +337,10 @@ sealed case class LongType(name: QName, baseType: Type) extends NonStringAtomicT
 sealed case class IntType(name: QName, baseType: Type) extends NonStringAtomicType {
   self =>
   override type Data = Int
-  override def doParse(string: String, ns: Namespaces): Data = string.toInt
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = tryParse(string.toInt)
   override def lexicalRep(data: Data): String = String.valueOf(data)
+  override type VAL = AtomicVal[Int]
+  override def facets = Facets.empty
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -302,8 +349,10 @@ sealed case class IntType(name: QName, baseType: Type) extends NonStringAtomicTy
 sealed case class StringType(name: QName, baseType: Type, whitespaceFacet: WhitespaceFacet) extends AtomicType {
   self =>
   override type Data = String
-  override def doParse(string: String, ns: Namespaces): Data = string
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = Right(string)
   override def lexicalRep(data: Data): String = data
+  override type VAL = AtomicVal[String]
+  override def facets = Facets.empty
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }
@@ -312,11 +361,13 @@ sealed case class StringType(name: QName, baseType: Type, whitespaceFacet: White
 sealed case class QNameType(name: QName, baseType: Type) extends NonStringAtomicType {
   self =>
   override type Data = QName
-  override def doParse(string: String, ns: Namespaces): Data = {
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = {
     val (opf, ln) = QName.parse(string)
-    QNameFactory.caching(opf.map(ns.namespaceForPrefix(_).get).getOrElse(NoNamespace), ln, opf.getOrElse(NoPrefix))
+    Right(QNameFactory.caching(opf.map(ns.namespaceForPrefix(_).get).getOrElse(NoNamespace), ln, opf.getOrElse(NoPrefix)))
   }
   override def lexicalRep(data: Data): String = String.valueOf(data)
+  override type VAL = AtomicVal[QName]
+  override def facets = Facets.empty
   override val accept = new Accept[AtomicTypeVisitor] {
     override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
   }

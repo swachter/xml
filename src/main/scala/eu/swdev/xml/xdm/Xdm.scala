@@ -12,32 +12,29 @@ object Xdm {
 
   private object createValueFunctions {
 
-    def apply(tpe: untypedAtomicType.type ) = (string: String, ns: Namespaces) => UntypedAtomicValue(tpe.name, tpe.parse(string, ns))
-    def apply(tpe: BooleanType) = (string: String, ns: Namespaces) => BooleanValue(tpe.name, tpe.parse(string, ns))
-    def apply(tpe: DoubleType) = (string: String, ns: Namespaces) => DoubleValue(tpe.name, tpe.parse(string, ns))
-    def apply(tpe: DecimalType) = (string: String, ns: Namespaces) => DecimalValue(tpe.name, tpe.parse(string, ns))
-    def apply(tpe: IntegerType) = (string: String, ns: Namespaces) => IntegerValue(tpe.name, tpe.parse(string, ns))
-    def apply(tpe: LongType) = (string: String, ns: Namespaces) => LongValue(tpe.name, tpe.parse(string, ns))
-    def apply(tpe: IntType) = (string: String, ns: Namespaces) => IntValue(tpe.name, tpe.parse(string, ns))
-    def apply(tpe: StringType) = (string: String, ns: Namespaces) => StringValue(tpe.name, tpe.parse(string, ns))
-    def apply(tpe: QNameType) = (string: String, ns: Namespaces) => QNameValue(tpe.name, tpe.parse(string, ns))
+    def apply(tpe: untypedAtomicType.type ) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(UntypedAtomicValue(tpe.name, _))
+    def apply(tpe: BooleanType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(BooleanValue(tpe.name, _))
+    def apply(tpe: DoubleType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(DoubleValue(tpe.name, _))
+    def apply(tpe: DecimalType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(DecimalValue(tpe.name, _))
+    def apply(tpe: IntegerType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(IntegerValue(tpe.name, _))
+    def apply(tpe: LongType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(LongValue(tpe.name, _))
+    def apply(tpe: IntType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(IntValue(tpe.name, _))
+    def apply(tpe: StringType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(StringValue(tpe.name, _))
+    def apply(tpe: QNameType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(QNameValue(tpe.name, _))
 
-    def apply(tpe: ListType): (String, Namespaces) => ListValue = {
-      val createItemValueFunction: (String, Namespaces) => AtomicValue = tpe.itemType match {
-        case Left(at) => at.createValue
-        case Right(l) => {
-          (string: String, ns: Namespaces) => l.iterator.map(at => Try { at.createValue(string, ns) }).find(_.isSuccess).map(_.get).getOrElse(throw new IllegalArgumentException(s"invalid value: $string; non of the union member types could parse the value"))
-        }
+    def apply(tpe: ListType) = (lexicalRep: String, ns: Namespaces) =>  {
+      val createItemValueFunction: String => Either[String, AtomicValue] = tpe.itemType match {
+        case Left(at) => s => at.createValue(s, ns)
+        case Right(l) => s => unionValue[AtomicType, AtomicValue](l)((at: AtomicType) => at.accept(av, ()))(s, ns)
       }
-      (string: String, ns: Namespaces) => {
-        val items = WhitespaceProcessing.Collapse.process(string).split(' ').map(s => createItemValueFunction(s, ns)).toList
-        ListValue(tpe.name, items)
-      }
+      val eitherItems = eu.swdev.util.traverse(WhitespaceProcessing.Collapse.process(lexicalRep).split(' ').toList)(createItemValueFunction)
+      eitherItems.right.map(ListValue(tpe.name, _))
     }
 
-    def apply(tpe: UnionType): (String, Namespaces) => SimpleValue = (string, ns) => {
-      tpe.memberTypes.iterator.map(at => Try { at.createValue(string, ns) }).find(_.isSuccess).map(_.get).getOrElse(throw new IllegalArgumentException(s"invalid value: $string; non of the union member types could parse the value"))
-    }
+    def apply(tpe: UnionType): (String, Namespaces) => Either[String, SimpleValue] = unionValue[AtomicOrListType, SimpleValue](tpe.memberTypes)((st: SimpleType) => st.accept(sv, ()))
+
+    def unionValue[T <: AtomicOrListType, V <: SimpleValue](memberTypes: List[T])(cvf: T => (String, Namespaces) => Either[String, V])(lexicalRep: String, ns: Namespaces): Either[String, V] =
+      memberTypes.iterator.map(at => Try { cvf(at)(lexicalRep, ns) }).find(_.isSuccess).map(_.get).getOrElse(throw new IllegalArgumentException(s"invalid value: $lexicalRep; non of the union member types could parse the value"))
   }
 
   implicit class SimpleTypeOps(val tpe: SimpleType) extends AnyVal {
@@ -69,7 +66,7 @@ object Xdm {
   }
 
   trait AtomicVisitMethods {
-    def visit(tpe: anyAtomicType.type, p: Unit): (String, Namespaces) => AtomicValue = throw new IllegalStateException("anyAtomicType is abstract")
+    def visit(tpe: anyAtomicType.type, p: Unit): (String, Namespaces) => Either[String, AtomicValue] = (_, _) => Left("anyAtomicType is abstract")
     def visit(tpe: untypedAtomicType.type, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: BooleanType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: DoubleType, p: Unit) = createValueFunctions(tpe)
@@ -82,13 +79,13 @@ object Xdm {
   }
 
   trait SimpleVisitMethods {
-    def visit(tpe: anySimpleType.type, p: Unit): (String, Namespaces) => SimpleValue = throw new IllegalStateException("anySimpleType is abstract")
+    def visit(tpe: anySimpleType.type, p: Unit): (String, Namespaces) => Either[String, SimpleValue] = (_, _) => Left("anySimpleType is abstract")
     def visit(tpe: UnionType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: ListType, p: Unit) = createValueFunctions(tpe)
   }
 
-  object av extends AtomicTypeVisitor[(String, Namespaces) => AtomicValue, Unit] with AtomicVisitMethods
-  object sv extends SimpleTypeVisitor[(String, Namespaces) => SimpleValue, Unit] with AtomicVisitMethods with SimpleVisitMethods
+  object av extends AtomicTypeVisitor[(String, Namespaces) => Either[String, AtomicValue], Unit] with AtomicVisitMethods
+  object sv extends SimpleTypeVisitor[(String, Namespaces) => Either[String, SimpleValue], Unit] with AtomicVisitMethods with SimpleVisitMethods
 
 
 }

@@ -3,6 +3,7 @@ package eu.swdev.xml.xsd.instantiation
 import eu.swdev.xml.base.SomeValue
 import eu.swdev.xml.name.{LocalName, Namespace, QNameFactory, QName}
 import eu.swdev.xml.schema.ComplexType
+import eu.swdev.xml.schema.Facets.FacetOp
 import eu.swdev.xml.schema._
 import eu.swdev.xml.xsd.cmp._
 
@@ -247,25 +248,95 @@ trait JobMod {
     case d: SimpleTypeRestrictionElem => for {
       typeName <- typeName(st.name)
       baseType <- d.base.fold(simpleTypeJob(d.tpe.get))(await[SimpleType](_))
-      facets <- Job.traverse(d.facets)(facetJob(_))
-    } yield {
-      baseType match {
-        case bt: AtomicType => ???
-        case bt: ListType => ListType(typeName, bt.itemType)
-        case bt: UnionType => UnionType(typeName, bt.memberTypes)
-      }
-    }
+      restrictedType <- simpleTypeRestriction(typeName, baseType, d.facetSpecs)
+    } yield restrictedType
     case d: ListElem => for {
       typeName <- typeName(st.name)
       itemType <- d.itemType.fold(simpleTypeJob(d.simpleType.get))(await[SimpleType](_))
-    } yield ListType(typeName, itemType)
+    } yield ListType(typeName, anySimpleType, Facets.empty[ListVal], itemType)
     case d: UnionElem => for {
       typeName <- typeName(st.name)
       memberTypes <- d.memberTypes.fold(Job.unit(Seq[SimpleType]()))(qns => Job.traverse(qns)(await[SimpleType](_))) & Job.traverse(d.simpleTypes)(simpleTypeJob(_))
-    } yield UnionType(typeName, memberTypes._1 ++ memberTypes._2)
+    } yield UnionType(typeName, anySimpleType, Facets.empty[SimpleVal], memberTypes._1 ++ memberTypes._2)
   }
 
-  def facetJob(fe: FacetElem): Job[Unit] = ???
+  def simpleTypeRestriction(typeName: QName, simpleType: SimpleType, facetSpecs: Seq[FacetSpec]): Job[SimpleType] = {
+
+    simpleType match {
+
+      case baseType: ListType => {
+
+        def go(facets: Facets[ListVal], fss: Seq[FacetSpec]): Job[Facets[ListVal]] = {
+
+          def restrictAndGo[V](fop: FacetOp[_, ListVal, V, _], value: V, tail: List[FacetSpec]): Job[Facets[ListVal]] = {
+            if (fop.isRestriction(value)) go(fop.set(value), tail) else abort(s"illegal restriction")
+          }
+
+          fss match {
+            case head :: tail => {
+              head match {
+                case f: LengthElem => restrictAndGo(facets.length, f.value, tail)
+                case f: MinLengthElem => restrictAndGo(facets.minLength, f.value, tail)
+                case f: MaxLengthElem => restrictAndGo(facets.maxLength, f.value, tail)
+                case f: PatternsFacetSpec => restrictAndGo(facets.pattern, f.value.map(_.value.r), tail)
+                case f: EnumerationsFacetSpec => {
+                  eu.swdev.util.traverse(f.value.toList)(ee => baseType.createVal(ee.value, ee.namespaces)).fold(
+                    abort(_),
+                    restrictAndGo(facets.enum, _, tail)
+                  )
+                }
+                case f: AssertElem => ???
+                case f: WhitespaceElem => ???
+                case f => abort(s"unsupported facet for list type: $head")
+              }
+            }
+            case _ => Job.unit(facets)
+          }
+        }
+
+        for {
+          fs <- go(baseType.facets, facetSpecs)
+        } yield ListType(typeName, baseType, fs, baseType.itemType)
+
+      }
+
+      case baseType: UnionType => {
+
+        def go(facets: Facets[SimpleVal], fss: Seq[FacetSpec]): Job[Facets[SimpleVal]] = {
+
+          def restrictAndGo[V](fop: FacetOp[_, SimpleVal, V, _], value: V, tail: List[FacetSpec]): Job[Facets[SimpleVal]] = {
+            if (fop.isRestriction(value)) go(fop.set(value), tail) else abort(s"illegal restriction")
+          }
+
+          fss match {
+            case head :: tail => {
+              head match {
+                case f: PatternsFacetSpec => restrictAndGo(facets.pattern, f.value.map(_.value.r), tail)
+                case f: EnumerationsFacetSpec => {
+                  eu.swdev.util.traverse(f.value.toList)(ee => baseType.createVal(ee.value, ee.namespaces)).fold(
+                    abort(_),
+                    restrictAndGo(facets.enum, _, tail)
+                  )
+                }
+                case f: AssertElem => ???
+                case f => abort(s"unsupported facet for list type: $head")
+              }
+            }
+            case _ => Job.unit(facets)
+          }
+        }
+
+        for {
+          fs <- go(baseType.facets, facetSpecs)
+        } yield UnionType(typeName, baseType, fs, baseType.memberTypes)
+
+      }
+
+
+
+    }
+
+  }
 
   // part 2; 4.1.2
   def typeName(someName: SomeValue[String]): Job[QName] = for {

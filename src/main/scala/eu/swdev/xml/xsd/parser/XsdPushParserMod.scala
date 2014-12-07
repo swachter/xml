@@ -303,7 +303,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
     case s => fail(s"invalid explicit timezone value: $s")
   }) gmap Generic[ExplicitTimezoneElem]
 
-  lazy val enumeration: Parser[EnumerationElem] = noFixedFacet("enumeration") gmap Generic[EnumerationElem]
+  lazy val enumeration: Parser[EnumerationElem] = noFixedFacet("enumeration") ~ getState.map(_.namespacesStack.head) gmap Generic[EnumerationElem]
 
   lazy val fractionDigits: Parser[FractionDigitsElem] = facet("fractionDigits", parseInt) gmap Generic[FractionDigitsElem]
 

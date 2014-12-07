@@ -129,7 +129,7 @@ trait XmlPushParserMod extends PushParserMod {
           case i => abort(state, s"can not end element - missing input: $i")
         }
       }
-      case None => abort(state, s"can not end element; no element has started - unexpected parser state: $state")
+      case _ => abort(state, s"can not end element; no element has started - unexpected parser state: $state")
     }
   }
 

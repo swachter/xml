@@ -1,31 +1,8 @@
 package eu.swdev.xml.schema
 
-import eu.swdev.xml.name.Namespaces
-
 trait SimpleVal
 
-trait AtomicVal extends SimpleVal {
-  type TPE <: AtomicType
-  def tpe: TPE
-  def data: TPE#Data
-}
+case class AtomicVal[X](tpe: AtomicType, data: X) extends SimpleVal
 
-//object AtomicVal {
-//
-//  def apply(lexicalRep: String, namespaces: Namespaces, tpe: AtomicType): AtomicVal = {
-//    new AtomicVal(tpe)(tpe.parse(lexicalRep, namespaces))
-//  }
-//
-//}
+case class ListVal(tpe: ListType, data: List[AtomicVal[_]]) extends SimpleVal
 
-class ListVal(tpe: ListType)(data: List[AtomicVal]) extends SimpleVal
-
-//object ListVal {
-//
-//  def apply(lexicalRep: String, namespaces: Namespaces, tpe: ListType): ListVal = {
-//    tpe.itemType match {
-//      case Left(at) =>
-//    }
-//  }
-//
-//}

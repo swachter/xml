@@ -1,8 +1,7 @@
 package eu.swdev.xml.schema
 
-import eu.swdev.xml.schema.FacetsMod.Facets.HasDigits
+import Facets.HasDigits
 import org.scalatest.FunSuite
-import shapeless.HMap
 
 /**
   */
@@ -10,17 +9,15 @@ class FacetsTest extends FunSuite {
 
   test("length facets") {
 
-    import FacetsMod._
+    val facets = new Facets[ListVal](Map.empty)
 
-    val facets = new Facets[List[Int]](Map.empty)
-
-    assert(facets.check(Nil, ""))
+    assert(facets.check(ListVal(null, Nil), ""))
 
     val restricted = facets.length.set(2)
 
-    assert(!restricted.check(Nil, ""))
+    assert(!restricted.check(ListVal(null, Nil), ""))
 
-    assert(restricted.check(1 :: 2 :: Nil, "1 2"))
+    assert(restricted.check(ListVal(null, null :: null :: Nil), "1 2"))
 
 //    assert(facets.Length.doCheck(Nil, 0))
 //
@@ -38,7 +35,17 @@ class FacetsTest extends FunSuite {
 //
 //    val restricted2 = restricted.Length.restrict(2)
 
+    val stringFacets = Facets[AtomicVal[String]](Map.empty)
 
+    stringFacets.length.set(3)
+
+  }
+
+  test("digits facets") {
+
+    val facets = new Facets[AtomicVal[BigDecimal]](Map.empty)
+
+    facets.totalDigits.set(5)
   }
 
   test("digits") {

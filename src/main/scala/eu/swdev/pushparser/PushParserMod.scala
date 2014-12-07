@@ -137,6 +137,10 @@ trait PushParserMod { mod =>
 
   def success[X](x: X): Parser[X] = Parser(s => Done(x, s))
 
+  val getState: Parser[State] = Parser { state => Done(state, state) }
+
+  def setState(state: State): Parser[Unit] = Parser { _ => Done((), state)}
+
   val pNil: Parser[HNil] = Parser(state => Done(HNil, state))
 
   @tailrec
