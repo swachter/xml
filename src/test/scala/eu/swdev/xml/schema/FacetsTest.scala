@@ -13,7 +13,7 @@ class FacetsTest extends FunSuite {
 
     assert(facets.check(ListVal(null, Nil), ""))
 
-    val restricted = facets.length.set(2)
+    val restricted = facets.length.checkAndSet(2).right.get
 
     assert(!restricted.check(ListVal(null, Nil), ""))
 
@@ -37,7 +37,7 @@ class FacetsTest extends FunSuite {
 
     val stringFacets = Facets[AtomicVal[String]](Map.empty)
 
-    stringFacets.length.set(3)
+    stringFacets.length.checkAndSet(3)
 
   }
 
@@ -45,7 +45,7 @@ class FacetsTest extends FunSuite {
 
     val facets = new Facets[AtomicVal[BigDecimal]](Map.empty)
 
-    facets.totalDigits.set(5)
+    facets.totalDigits.checkAndSet(5)
   }
 
   test("digits") {

@@ -309,15 +309,15 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val length: Parser[LengthElem] = facet("length", parseInt) gmap Generic[LengthElem]
 
-  lazy val maxExclusive: Parser[MaxExclusiveElem] = facet("maxExclusive") gmap Generic[MaxExclusiveElem]
+  lazy val maxExclusive: Parser[MaxExclusiveElem] = facet("maxExclusive") ~ getState.map(_.namespacesStack.head) gmap Generic[MaxExclusiveElem]
 
-  lazy val maxInclusive: Parser[MaxInclusiveElem] = facet("maxInclusive") gmap Generic[MaxInclusiveElem]
+  lazy val maxInclusive: Parser[MaxInclusiveElem] = facet("maxInclusive") ~ getState.map(_.namespacesStack.head) gmap Generic[MaxInclusiveElem]
 
   lazy val maxLength: Parser[MaxLengthElem] = facet("maxLength", parseInt) gmap Generic[MaxLengthElem]
 
-  lazy val minExclusive: Parser[MinExclusiveElem] = facet("minExclusive") gmap Generic[MinExclusiveElem]
+  lazy val minExclusive: Parser[MinExclusiveElem] = facet("minExclusive") ~ getState.map(_.namespacesStack.head) gmap Generic[MinExclusiveElem]
 
-  lazy val minInclusive: Parser[MinInclusiveElem] = facet("minInclusive") gmap Generic[MinInclusiveElem]
+  lazy val minInclusive: Parser[MinInclusiveElem] = facet("minInclusive") ~ getState.map(_.namespacesStack.head) gmap Generic[MinInclusiveElem]
 
   lazy val minLength: Parser[MinLengthElem] = facet("minLength", parseInt) gmap Generic[MinLengthElem]
 

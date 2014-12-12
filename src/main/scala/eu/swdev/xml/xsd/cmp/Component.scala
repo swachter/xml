@@ -6,6 +6,8 @@ import eu.swdev.xml.base.{SomeValue, WhitespaceProcessing, Location}
 import eu.swdev.xml.name.{Namespaces, QName}
 import eu.swdev.xml.schema._
 
+import scala.util.matching.Regex
+
 /**
  *
  */
@@ -190,15 +192,15 @@ case class FractionDigitsElem(loc: Location, id: Option[String], annotation: Opt
 
 case class LengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class MaxExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class MaxExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetSpec
 
-case class MaxInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class MaxInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetSpec
 
 case class MaxLengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class MinExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class MinExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetSpec
 
-case class MinInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class MinInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetSpec
 
 case class MinLengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 

@@ -1,5 +1,7 @@
 package eu.swdev.xml.schema
 
+import eu.swdev.xml.base.WhitespaceProcessing
+
 import scala.util.matching.Regex
 
 
@@ -19,8 +21,7 @@ trait Facet
 
 trait FacetValue[X, V] {
   def check(x: X, lexicalRep: String): Boolean
-
-  def isRestriction(v: V): Boolean
+  def restrict(v: V): Either[String, V]
 }
 
 object Facets {
@@ -29,16 +30,31 @@ object Facets {
 
   def empty[X <: SimpleVal]: Facets[X] = none.asInstanceOf[Facets[X]]
 
+  def withWspPreserve[X <: SimpleVal]: Facets[X] = empty[X].whitespace.checkAndSet(WhitespaceProcessing.Preserve).right.get
+
+  def withWspCollapse[X <: SimpleVal]: Facets[X] = empty[X].whitespace.checkAndSet(WhitespaceProcessing.Collapse).right.get
+
+  /**
+   * Operation for checking if setting a facet value would be a restriction and setting that value.
+   *
+   * @param facets
+   * @param facet
+   * @param createFacetValue
+   * @tparam F
+   * @tparam X
+   * @tparam V
+   * @tparam FV
+   */
   case class FacetOp[F <: Facet, X <: SimpleVal, V, FV <: FacetValue[X, V]](facets: Facets[X], facet: F, createFacetValue: V => FV) {
 
     implicit val kv = new KV[F, FV]
 
-    def set(value: V): Facets[X] = facets +(facet, createFacetValue(value))
+    def checkAndSet(value: V): Either[String, Facets[X]] = 
+      facets.get(facet).fold[Either[String, V]](Right(value))(_.restrict(value)).right.map(set(_))
+    
+    private def set(value: V): Facets[X] = facets + (facet, createFacetValue(value))
 
-    def isRestriction(value: V): Boolean = facets.get(facet) match {
-      case Some(fv) => fv.isRestriction(value)
-      case None => true
-    }
+    def get: Option[FV] = facets.get(facet)
 
   }
 
@@ -46,22 +62,22 @@ object Facets {
 
     case class MinIncFacetValue(value: X) extends FacetValue[X, X] {
       override def check(x: X, lexicalRep: String): Boolean = ev.lteq(value, x)
-      override def isRestriction(v: X): Boolean = ev.gteq(value, v)
+      override def restrict(v: X): Either[String, X] = if (ev.gteq(value, v)) Right(v) else Left(s"min. inclusive can not be restricted from $value to $v")
     }
 
     case class MinExcFacetValue(value: X) extends FacetValue[X, X] {
       override def check(x: X, lexicalRep: String): Boolean = ev.lt(value, x)
-      override def isRestriction(v: X): Boolean = ev.gteq(value, v)
+      override def restrict(v: X): Either[String, X] = if (ev.gteq(value, v)) Right(v) else Left(s"min. exclusive can not be restricted from $value to $v")
     }
 
     case class MaxIncFacetValue(value: X) extends FacetValue[X, X] {
       override def check(x: X, lexicalRep: String): Boolean = ev.gteq(value, x)
-      override def isRestriction(v: X): Boolean = ev.lteq(value, v)
+      override def restrict(v: X): Either[String, X] = if (ev.lteq(value, v)) Right(v) else Left(s"max. inclusive can not be restricted from $value to $v")
     }
 
     case class MaxExcFacetValue(value: X) extends FacetValue[X, X] {
       override def check(x: X, lexicalRep: String): Boolean = ev.gt(value, x)
-      override def isRestriction(v: X): Boolean = ev.lteq(value, v)
+      override def restrict(v: X): Either[String, X] = if (ev.lteq(value, v)) Right(v) else Left(s"max. exclusive can not be restricted from $value to $v")
     }
 
     def minInc = FacetOp(facets, MinIncFacet, MinIncFacetValue.apply)
@@ -75,17 +91,17 @@ object Facets {
 
     case class LengthFacetValue(value: Int) extends FacetValue[X, Int] {
       override def check(x: X, lexicalRep: String): Boolean = ev.length(x) == value
-      override def isRestriction(v: Int): Boolean = v == value
+      override def restrict(v: Int): Either[String, Int] = if (v == value) Right(v) else Left(s"length can not be restricted form $value to $v")
     }
 
     case class MinLengthFacetValue(value: Int) extends FacetValue[X, Int] {
       override def check(x: X, lexicalRep: String): Boolean = ev.length(x) >= value
-      override def isRestriction(v: Int): Boolean = v <= value
+      override def restrict(v: Int): Either[String, Int] = if (v <= value) Right(v) else Left(s"minimum length can not be restricted form $value to $v")
     }
 
     case class MaxLengthFacetValue(value: Int) extends FacetValue[X, Int] {
       override def check(x: X, lexicalRep: String): Boolean = ev.length(x) <= value
-      override def isRestriction(v: Int): Boolean = v >= value
+      override def restrict(v: Int): Either[String, Int] = if (v >= value) Right(v) else Left(s"maximum length can not be restricted form $value to $v")
     }
 
     def length = FacetOp(facets, LengthFacet, LengthFacetValue.apply)
@@ -98,12 +114,12 @@ object Facets {
 
     case class TotalDigitsFacetValue(value: Int) extends FacetValue[X, Int] {
       override def check(x: X, lexicalRep: String): Boolean = ev.totalDigits(x) == value
-      override def isRestriction(v: Int): Boolean = v == value
+      override def restrict(v: Int): Either[String, Int] = if (v == value) Right(v) else Left(s"total digits can not be restricted form $value to $v")
     }
 
     case class FractionDigitsFacetValue(value: Int) extends FacetValue[X, Int] {
       override def check(x: X, lexicalRep: String): Boolean = ev.fractionDigits(x) >= value
-      override def isRestriction(v: Int): Boolean = v <= value
+      override def restrict(v: Int): Either[String, Int] = if (v <= value) Right(v) else Left(s"fraction digits can not be restricted form $value to $v")
     }
 
     def totalDigits = FacetOp(facets, TotalDigitsFacet, TotalDigitsFacetValue.apply)
@@ -119,12 +135,12 @@ object Facets {
         case ExplicitTimeZone.Prohibited => !ev.hasTimeZone(x)
         case ExplicitTimeZone.Required => ev.hasTimeZone(x)
       }
-      override def isRestriction(v: ExplicitTimeZone): Boolean = (value, v) match {
-        case (ExplicitTimeZone.Prohibited, ExplicitTimeZone.Prohibited) => true
-        case (ExplicitTimeZone.Prohibited, _) => false
-        case (ExplicitTimeZone.Required, ExplicitTimeZone.Required) => true
-        case (ExplicitTimeZone.Required, _) => false
-        case _ => true
+      override def restrict(v: ExplicitTimeZone): Either[String, ExplicitTimeZone] = (value, v) match {
+        case (ExplicitTimeZone.Prohibited, ExplicitTimeZone.Prohibited) => Right(v)
+        case (ExplicitTimeZone.Prohibited, _) => Left(s"explicit timezone can not be restricted from $value to $v")
+        case (ExplicitTimeZone.Required, ExplicitTimeZone.Required) => Right(v)
+        case (ExplicitTimeZone.Required, _) => Left(s"explicit timezone can not be restricted from $value to $v")
+        case _ => Left(s"explicit timezone can not be restricted from $value to $v")
       }
     }
 
@@ -136,16 +152,22 @@ object Facets {
 
     case class EnumFacetValue(value: Seq[X]) extends FacetValue[X, Seq[X]] {
       override def check(x: X, lexicalRep: String): Boolean = value.exists(_ == x)
-      override def isRestriction(r: Seq[X]): Boolean = r.forall(s => value.exists(_ == s))
+      override def restrict(v: Seq[X]): Either[String, Seq[X]] = if (v.forall(s => value.exists(_ == s))) Right(v) else Left(s"enumeration facet can not be restricted from $value to $v")
     }
 
     case class PatternFacetValue(value: Seq[Regex]) extends FacetValue[X, Seq[Regex]] {
       override def check(x: X, lexicalRep: String): Boolean = value.exists(_.unapplySeq(lexicalRep).isDefined)
-      override def isRestriction(r: Seq[Regex]): Boolean = true
+      override def restrict(v: Seq[Regex]): Either[String, Seq[Regex]] = Right(v)
+    }
+
+    case class WhitespaceFacetValue(value: WhitespaceProcessing) extends FacetValue[X, WhitespaceProcessing] {
+      override def check(x: X, lexicalRep: String): Boolean = true
+      override def restrict(v: WhitespaceProcessing): Either[String, WhitespaceProcessing] = if (value.isSameOrRestriction(v)) Right(v) else Left(s"whitespace facet can not be restricted from $value to $v")
     }
 
     def enum = FacetOp(facets, EnumFacet, EnumFacetValue.apply)
     def pattern = FacetOp(facets, PatternFacet, PatternFacetValue.apply)
+    def whitespace = FacetOp(facets, WhitespaceFacet, WhitespaceFacetValue.apply)
   }
 
 
@@ -252,6 +274,8 @@ object Facets {
   object EnumFacet extends Facet
 
   object PatternFacet extends Facet
+
+  object WhitespaceFacet extends Facet
 
 }
 
