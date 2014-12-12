@@ -296,12 +296,12 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val assertion: Parser[AssertElem] = xsElem("assertion")(annotated ~ testAttr.opt ~ xPathDefaultNamespaceAttr.opt) gmap Generic[AssertElem]
 
-  lazy val explicitTimezone: Parser[ExplicitTimezoneElem] = facet("explicitTimezone", (s: String) => s match {
+  lazy val explicitTimezone: Parser[ExplicitTimeZoneElem] = facet("explicitTimezone", (s: String) => s match {
     case "optional" => success(ExplicitTimeZone.Optional)
     case "required" => success(ExplicitTimeZone.Required)
     case "prohibited" => success(ExplicitTimeZone.Prohibited)
     case s => fail(s"invalid explicit timezone value: $s")
-  }) gmap Generic[ExplicitTimezoneElem]
+  }) gmap Generic[ExplicitTimeZoneElem]
 
   lazy val enumeration: Parser[EnumerationElem] = noFixedFacet("enumeration") ~ getState.map(_.namespacesStack.head) gmap Generic[EnumerationElem]
 

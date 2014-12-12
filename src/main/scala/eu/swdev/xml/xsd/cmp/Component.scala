@@ -184,7 +184,7 @@ case class UnionElem(loc: Location, id: Option[String], annotation: Option[Annot
 
 case class AssertElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: Option[String], xPathDefaultNamespace: Option[XPathDefaultNamespace], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
-case class ExplicitTimezoneElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: ExplicitTimeZone, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class ExplicitTimeZoneElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: ExplicitTimeZone, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
 case class EnumerationElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem
 

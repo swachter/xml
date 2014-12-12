@@ -3,7 +3,7 @@ package eu.swdev.xml.xsd.instantiation
 import eu.swdev.xml.base.SomeValue
 import eu.swdev.xml.name._
 import eu.swdev.xml.schema.ComplexType
-import eu.swdev.xml.schema.Facets.{HasLength, FacetOp}
+import eu.swdev.xml.schema.Facets.{HasTimeZone, HasDigits, HasLength, FacetOp}
 import eu.swdev.xml.schema._
 import eu.swdev.xml.xsd.cmp._
 
@@ -278,18 +278,24 @@ trait JobMod {
       case _ => Job.unit(facets)
     }
 
-    def generalFacetsHandler[T <: SimpleType](baseType: T): PartialFunction[FacetSpec, Facets[T#VAL] => Either[String, Facets[T#VAL]]] = {
+    // a function that either restricts a set of facets or returns an error
+    type FacetsRestriction[X <: SimpleVal] = Facets[X] => Either[String, Facets[X]]
+
+    // a partial function that transforms a FacetSpec into a FacetsRestriction
+    type FacetSpecHandler[X <: SimpleVal] = PartialFunction[FacetSpec, FacetsRestriction[X]]
+
+    def generalFacetsHandler[T <: SimpleType](baseType: T): FacetSpecHandler[baseType.VAL] = {
       case f: PatternsFacetSpec => facets => {
         eu.swdev.util.traverse(f.value.toList)(pe => Try { pe.value.r } match {
           case Success(s) => Right(s)
           case Failure(f) => Left(f.getMessage)
-        }).fold[Either[String, Facets[T#VAL]]](
+        }).fold[Either[String, Facets[baseType.VAL]]](
             Left(_),
             facets.pattern.checkAndSet(_)
           )
       }
       case f: EnumerationsFacetSpec => facets => {
-        eu.swdev.util.traverse(f.value.toList)(ee => baseType.createVal(ee.value, ee.namespaces)).fold[Either[String, Facets[T#VAL]]](
+        eu.swdev.util.traverse(f.value.toList)(ee => baseType.createVal(ee.value, ee.namespaces)).fold[Either[String, Facets[baseType.VAL]]](
           Left(_),
           facets.enum.checkAndSet(_)
         )
@@ -297,32 +303,42 @@ trait JobMod {
       case f: AssertElem => ???
     }
 
-    def whitespaceFacetHandler[X <: SimpleVal]: PartialFunction[FacetSpec, Facets[X] => Either[String, Facets[X]]] = {
+    def whitespaceHandler[X <: SimpleVal]: FacetSpecHandler[X] = {
       case f: WhitespaceElem => facets => facets.whitespace.checkAndSet(f.value)
     }
 
-    def lengthFacetsHandler[X <: SimpleVal: HasLength]: PartialFunction[FacetSpec, Facets[X] => Either[String, Facets[X]]] = {
+    def explicitTimeZoneHandler[X <: SimpleVal: HasTimeZone]: FacetSpecHandler[X] = {
+      case f: ExplicitTimeZoneElem => facets => facets.explicitTimeZone.checkAndSet(f.value)
+    }
+
+    def lengthHandler[X <: SimpleVal: HasLength]: FacetSpecHandler[X] = {
       case f: LengthElem => facets => facets.length.checkAndSet(f.value)
       case f: MinLengthElem => facets => facets.minLength.checkAndSet(f.value)
       case f: MaxLengthElem => facets => facets.maxLength.checkAndSet(f.value)
     }
 
-    def orderFacetsHandler[T <: SimpleType](baseType: T)(implicit ev: Ordering[T#VAL]): PartialFunction[FacetSpec, Facets[T#VAL] => Either[String, Facets[T#VAL]]] = {
+    def orderHandler[T <: SimpleType](baseType: T)(implicit ev: Ordering[T#VAL]): PartialFunction[FacetSpec, Facets[T#VAL] => Either[String, Facets[T#VAL]]] = {
       case f: MinInclusiveElem => facets => baseType.createVal(f.value, f.namespaces).right.flatMap(v => facets.minInc.checkAndSet(v))
       case f: MinExclusiveElem => facets => baseType.createVal(f.value, f.namespaces).right.flatMap(v => facets.minExc.checkAndSet(v))
       case f: MaxInclusiveElem => facets => baseType.createVal(f.value, f.namespaces).right.flatMap(v => facets.maxInc.checkAndSet(v))
       case f: MaxExclusiveElem => facets => baseType.createVal(f.value, f.namespaces).right.flatMap(v => facets.maxExc.checkAndSet(v))
     }
 
-    def joinedFacetsHandler[X <: SimpleVal](pfs: PartialFunction[FacetSpec, Facets[X] => Either[String, Facets[X]]]*): FacetSpec => Either[String, Facets[X] => Either[String, Facets[X]]] = {
-      fs => pfs.find(_.isDefinedAt(fs)).fold[Either[String, Facets[X] => Either[String, Facets[X]]]](Left("unsupported facet"))(pf => Right((facets: Facets[X]) => pf.apply(fs).apply(facets)))
+    def digitsHandler[X <: SimpleVal: HasDigits]: FacetSpecHandler[X] = {
+      case f: TotalDigitsElem => facets => facets.totalDigits.checkAndSet(f.value)
+      case f: FractionDigitsElem => facets => facets.fractionDigits.checkAndSet(f.value)
+    }
+
+    // joins a sequence of FacetSpecHandlers into a single function that converts a FacetSpec either into a FacetsRestriction or an error
+    def joinedHandler[X <: SimpleVal](pfs: FacetSpecHandler[X]*): FacetSpec => Either[String, FacetsRestriction[X]] = {
+      fs => pfs.find(_.isDefinedAt(fs)).fold[Either[String, FacetsRestriction[X]]](Left("unsupported facet"))(pf => Right((facets: Facets[X]) => pf.apply(fs).apply(facets)))
     }
 
     simpleType match {
 
       case baseType: ListType => {
 
-        val facetsHandler = joinedFacetsHandler(generalFacetsHandler(baseType), whitespaceFacetHandler, lengthFacetsHandler[ListVal])
+        val facetsHandler = joinedHandler(generalFacetsHandler(baseType), whitespaceHandler, lengthHandler[ListVal])
 
         for {
           fs <- go(baseType.facets, facetsHandler, facetSpecs)
@@ -332,7 +348,7 @@ trait JobMod {
 
       case baseType: UnionType => {
 
-        val facetsHandler = joinedFacetsHandler(generalFacetsHandler(baseType))
+        val facetsHandler = joinedHandler(generalFacetsHandler(baseType))
 
         for {
           fs <- go(baseType.facets, facetsHandler, facetSpecs)
@@ -343,30 +359,30 @@ trait JobMod {
       case baseType: AtomicType => {
 
         def atj[T <: AtomicType](bt: T)(create: (QName, T, Facets[bt.VAL]) => T)(handlers: PartialFunction[FacetSpec, Facets[bt.VAL] => Either[String, Facets[bt.VAL]]]*): Job[T] = for {
-          fs <- go(bt.facets, joinedFacetsHandler(handlers: _*), facetSpecs)
+          fs <- go(bt.facets, joinedHandler(handlers: _*), facetSpecs)
         } yield create(typeName, bt, fs)
 
         baseType.accept(new AtomicTypeVisitor[Job[AtomicType], Unit] {
 
           override def visit(tpe: anyAtomicType.type, p: Unit): Job[AtomicType] = abort("anyAtomicType can not be used as a base type")
 
-          override def visit(tpe: BooleanType, p: Unit): Job[AtomicType] = atj(tpe)(BooleanType.apply)(generalFacetsHandler(tpe), whitespaceFacetHandler)
+          override def visit(tpe: BooleanType, p: Unit): Job[AtomicType] = atj(tpe)(BooleanType.apply)(generalFacetsHandler(tpe), whitespaceHandler)
 
-          override def visit(tpe: DecimalType, p: Unit): Job[AtomicType] = atj(tpe)(DecimalType.apply)(generalFacetsHandler(tpe), orderFacetsHandler(tpe), whitespaceFacetHandler)
+          override def visit(tpe: DecimalType, p: Unit): Job[AtomicType] = atj(tpe)(DecimalType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[BigDecimal]], whitespaceHandler)
 
-          override def visit(tpe: DoubleType, p: Unit): Job[AtomicType] = atj(tpe)(DoubleType.apply)(generalFacetsHandler(tpe), orderFacetsHandler(tpe), whitespaceFacetHandler)
+          override def visit(tpe: DoubleType, p: Unit): Job[AtomicType] = atj(tpe)(DoubleType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), whitespaceHandler)
 
           override def visit(tpe: untypedAtomicType.type, p: Unit): Job[AtomicType] = abort("untypedAtomic type can not be used as a base type")
 
-          override def visit(tpe: IntegerType, p: Unit): Job[AtomicType] = atj(tpe)(IntegerType.apply)(generalFacetsHandler(tpe), orderFacetsHandler(tpe), whitespaceFacetHandler)
+          override def visit(tpe: IntegerType, p: Unit): Job[AtomicType] = atj(tpe)(IntegerType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[BigInt]], whitespaceHandler)
 
-          override def visit(tpe: LongType, p: Unit): Job[AtomicType] = atj(tpe)(LongType.apply)(generalFacetsHandler(tpe), orderFacetsHandler(tpe), whitespaceFacetHandler)
+          override def visit(tpe: LongType, p: Unit): Job[AtomicType] = atj(tpe)(LongType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[Long]], whitespaceHandler)
 
-          override def visit(tpe: IntType, p: Unit): Job[AtomicType] = atj(tpe)(IntType.apply)(generalFacetsHandler(tpe), orderFacetsHandler(tpe), whitespaceFacetHandler)
+          override def visit(tpe: IntType, p: Unit): Job[AtomicType] = atj(tpe)(IntType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[Int]], whitespaceHandler)
 
-          override def visit(tpe: StringType, p: Unit): Job[AtomicType] = atj(tpe)(StringType.apply)(generalFacetsHandler(tpe), orderFacetsHandler(tpe), lengthFacetsHandler[AtomicVal[String]], whitespaceFacetHandler)
+          override def visit(tpe: StringType, p: Unit): Job[AtomicType] = atj(tpe)(StringType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), lengthHandler[AtomicVal[String]], whitespaceHandler)
 
-          override def visit(tpe: QNameType, p: Unit): Job[AtomicType] = atj(tpe)(QNameType.apply)(generalFacetsHandler(tpe), whitespaceFacetHandler)
+          override def visit(tpe: QNameType, p: Unit): Job[AtomicType] = atj(tpe)(QNameType.apply)(generalFacetsHandler(tpe), whitespaceHandler)
 
         }, ())
 
