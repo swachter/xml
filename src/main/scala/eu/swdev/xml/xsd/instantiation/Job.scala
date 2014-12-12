@@ -277,20 +277,25 @@ trait JobMod {
       fs => pfs.find(_.isDefinedAt(fs)).fold[Either[String, FacetsRestriction[X]]](Left("unsupported facet"))(pf => Right((facets: Facets[X]) => pf.apply(fs).apply(facets)))
     }
 
+    // recursively apply FacetSpecs on Facets
     def go[VAL <: SimpleVal](
-      facets: Facets[VAL],
       compiler: FacetCompiler[VAL],
-      fss: Seq[FacetSpec])
-    : Job[Facets[VAL]] = fss match {
+      facets: Facets[VAL],
+      specs: Seq[FacetSpec])
+    : Job[Facets[VAL]] = specs match {
       case head :: tail => compiler(head) match {
         case Left(left) => abort(left)
         case Right(right) => right(facets) match {
           case Left(left) => abort(left)
-          case Right(right) => go(right, compiler, tail)
+          case Right(right) => go(compiler, right, tail)
         }
       }
       case _ => Job.unit(facets)
     }
+
+    def restrict[T <: SimpleType](bt: T)(create: (QName, T, Facets[bt.VAL]) => T)(handlers: PartialFunction[FacetSpec, Facets[bt.VAL] => Either[String, Facets[bt.VAL]]]*): Job[T] = for {
+      fs <- go(facetCompiler(handlers: _*), bt.facets, facetSpecs)
+    } yield create(typeName, bt, fs)
 
     def generalFacetsHandler(baseType: SimpleType): FacetHandler[baseType.VAL] = {
       case f: PatternsFacetSpec => facets => {
@@ -339,53 +344,33 @@ trait JobMod {
 
     simpleType match {
 
-      case baseType: ListType => {
+      case baseType: ListType => restrict(baseType)(ListType(_, _, _, baseType.itemType))(generalFacetsHandler(baseType), whitespaceHandler, lengthHandler[ListVal])
 
-        val facetsHandler = facetCompiler(generalFacetsHandler(baseType), whitespaceHandler, lengthHandler[ListVal])
-
-        for {
-          fs <- go(baseType.facets, facetsHandler, facetSpecs)
-        } yield ListType(typeName, baseType, fs, baseType.itemType)
-
-      }
-
-      case baseType: UnionType => {
-
-        val facetsHandler = facetCompiler(generalFacetsHandler(baseType))
-
-        for {
-          fs <- go(baseType.facets, facetsHandler, facetSpecs)
-        } yield UnionType(typeName, baseType, fs, baseType.memberTypes)
-
-      }
+      case baseType: UnionType => restrict(baseType)(UnionType(_, _, _, baseType.memberTypes))(generalFacetsHandler(baseType))
 
       case baseType: AtomicType => {
-
-        def atj[T <: AtomicType](bt: T)(create: (QName, T, Facets[bt.VAL]) => T)(handlers: PartialFunction[FacetSpec, Facets[bt.VAL] => Either[String, Facets[bt.VAL]]]*): Job[T] = for {
-          fs <- go(bt.facets, facetCompiler(handlers: _*), facetSpecs)
-        } yield create(typeName, bt, fs)
 
         baseType.accept(new AtomicTypeVisitor[Job[AtomicType], Unit] {
 
           override def visit(tpe: anyAtomicType.type, p: Unit): Job[AtomicType] = abort("anyAtomicType can not be used as a base type")
 
-          override def visit(tpe: BooleanType, p: Unit): Job[AtomicType] = atj(tpe)(BooleanType.apply)(generalFacetsHandler(tpe), whitespaceHandler)
+          override def visit(tpe: BooleanType, p: Unit): Job[AtomicType] = restrict(tpe)(BooleanType.apply)(generalFacetsHandler(tpe), whitespaceHandler)
 
-          override def visit(tpe: DecimalType, p: Unit): Job[AtomicType] = atj(tpe)(DecimalType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[BigDecimal]], whitespaceHandler)
+          override def visit(tpe: DecimalType, p: Unit): Job[AtomicType] = restrict(tpe)(DecimalType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[BigDecimal]], whitespaceHandler)
 
-          override def visit(tpe: DoubleType, p: Unit): Job[AtomicType] = atj(tpe)(DoubleType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), whitespaceHandler)
+          override def visit(tpe: DoubleType, p: Unit): Job[AtomicType] = restrict(tpe)(DoubleType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), whitespaceHandler)
 
           override def visit(tpe: untypedAtomicType.type, p: Unit): Job[AtomicType] = abort("untypedAtomic type can not be used as a base type")
 
-          override def visit(tpe: IntegerType, p: Unit): Job[AtomicType] = atj(tpe)(IntegerType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[BigInt]], whitespaceHandler)
+          override def visit(tpe: IntegerType, p: Unit): Job[AtomicType] = restrict(tpe)(IntegerType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[BigInt]], whitespaceHandler)
 
-          override def visit(tpe: LongType, p: Unit): Job[AtomicType] = atj(tpe)(LongType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[Long]], whitespaceHandler)
+          override def visit(tpe: LongType, p: Unit): Job[AtomicType] = restrict(tpe)(LongType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[Long]], whitespaceHandler)
 
-          override def visit(tpe: IntType, p: Unit): Job[AtomicType] = atj(tpe)(IntType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[Int]], whitespaceHandler)
+          override def visit(tpe: IntType, p: Unit): Job[AtomicType] = restrict(tpe)(IntType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[Int]], whitespaceHandler)
 
-          override def visit(tpe: StringType, p: Unit): Job[AtomicType] = atj(tpe)(StringType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), lengthHandler[AtomicVal[String]], whitespaceHandler)
+          override def visit(tpe: StringType, p: Unit): Job[AtomicType] = restrict(tpe)(StringType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), lengthHandler[AtomicVal[String]], whitespaceHandler)
 
-          override def visit(tpe: QNameType, p: Unit): Job[AtomicType] = atj(tpe)(QNameType.apply)(generalFacetsHandler(tpe), whitespaceHandler)
+          override def visit(tpe: QNameType, p: Unit): Job[AtomicType] = restrict(tpe)(QNameType.apply)(generalFacetsHandler(tpe), whitespaceHandler)
 
         }, ())
 
