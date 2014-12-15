@@ -171,14 +171,14 @@ trait XmlPushParserMod extends PushParserMod {
 
   def resolveQn(lexicalRep: String): Parser[QName] = Parser(state => {
     val (pr, ln) = QName.parse(lexicalRep)
-    pr match {
-      case Some(p) => state.namespacesStack.head.namespaceForPrefix(p) match {
+    val p = pr.getOrElse(NoPrefix)
+    // the default namespace is considered for QNames
+    state.namespacesStack.head.namespaceForPrefix(p) match {
         case Some(n) => Done(QNameFactory.caching(n, ln), state)
         case None => abort(state, s"unbounded namespace prefix: $p")
       }
-      case None => Done(QNameFactory.caching(ln), state)
     }
-  })
+  )
 
   def parseInt(lexicalRep: String): Parser[Int] = Parser(state => {
     Try(lexicalRep.toInt) match {
