@@ -1,7 +1,10 @@
 package eu.swdev.xml.xsd.instantiation
 
+import java.util
 import javax.print.attribute.standard.JobState
 
+import eu.swdev.xml.log
+import eu.swdev.xml.log.Messages
 import eu.swdev.xml.name.{LocalName, QName, Namespace}
 import eu.swdev.xml.schema._
 import eu.swdev.xml.xsd.cmp._
@@ -10,11 +13,9 @@ import scala.annotation.tailrec
 
 /**
   */
-object Instantiator {
+trait SchemaInstantiator { self: SchemaStore =>
 
-  val jobMod = new JobMod {}
-
-  import jobMod._
+  import JobMod._
 
   def jobs(schema: SchemaElem): Seq[Job[SchemaTopComponent]] = {
 
@@ -36,9 +37,8 @@ object Instantiator {
 
   def instantiate(
     schemaElem: SchemaElem,
-    targetNamespace: Namespace,
-    schemaImport: (Namespace, Option[String]) => (JobLog, Option[Schema])
-  ): Either[JobLog, (JobLog, Schema)] = {
+    targetNamespace: Namespace
+  ): (Messages, Option[Schema]) = {
 
     type LKEY[X] = (LocalName, Stage, SymbolSpace[X])
     type VAL[X <: SchemaTopComponent] = Seq[Option[X] => Step[SchemaTopComponent]]
@@ -107,7 +107,7 @@ object Instantiator {
       localWaiting: LocalWaiting,
       globalWaiting: GlobalWaiting,
       imported: Map[Namespace, Option[Schema]],
-      log: JobLog,
+      log: Messages,
       results: Results)
 
     @tailrec
@@ -135,8 +135,8 @@ object Instantiator {
               }
               // the schema has not yet been imported
               case None => {
-                val t = schemaImport(qName.namespace, schemaLocation)
-                val newState = state.copy(log = concatLogs(t._1, state.log), imported = state.imported + (qName.namespace -> t._2))
+                val t = getSchema(qName.namespace, schemaLocation)
+                val newState = state.copy(log = log.concat(t._1, state.log), imported = state.imported + (qName.namespace -> t._2))
                 drive(step, newState)
               }
             }
@@ -151,10 +151,10 @@ object Instantiator {
             results = state.results.+(t._1, Completed, a)(t._2),
             localWaiting = newLocalWaiting,
             steps = newSteps ++ state.steps,
-            log = concatLogs(jobState.log, state.log))
+            log = log.concat(jobState.log, state.log))
         }
         case Abort(jobState) => {
-          state.copy(log = concatLogs(jobState.log, state.log))
+          state.copy(log = log.concat(jobState.log, state.log))
         }
         case Created(a, next) => {
           val t = localNameAndSymbolSpace(a)
@@ -189,27 +189,29 @@ object Instantiator {
         driveSteps(newState)
       }
     }
+
     val initialJobs = jobs(schemaElem)
     val jobConfig = new JobConf(schemaElem, targetNamespace)
-    val jobState = new State(jobConfig, emptyJobLog)
+    val jobState = new State(jobConfig, log.emptyMessages)
     val initialSteps: Seq[Step[SchemaTopComponent]] = initialJobs.map(_.run(jobState))
 
-    val initialState = InstantiationState(initialSteps, LocalWaiting(Map.empty), GlobalWaiting(Map.empty), Map.empty, emptyJobLog, Results(Map.empty))
+    val initialState = InstantiationState(initialSteps, LocalWaiting(Map.empty), GlobalWaiting(Map.empty), Map.empty, log.emptyMessages, Results(Map.empty))
 
     val finalState = driveSteps(initialState)
 
-    if (finalState.log.isEmpty) {
-      val symbolTable = finalState.results.entries.foldLeft(SymbolTable.empty)((acc, entry) => {
-        def add[X](e: RESENTRY[X]): SymbolTable = {
-          acc.+(e._1._1, e._2)(e._1._3)
-        }
-        add(entry)
-      })
-      Right((finalState.log, Schema(targetNamespace, symbolTable)))
-    } else {
-      Left(finalState.log)
-    }
+    val symbolTable = finalState.results.entries.foldLeft(SymbolTable.empty)((acc, entry) => {
+      def add[X](e: RESENTRY[X]): SymbolTable = {
+        acc.+(e._1._1, e._2)(e._1._3)
+      }
+      add(entry)
+    })
+
+    (finalState.log, Some(Schema(targetNamespace, symbolTable)))
 
   }
+
+  val schemaMap = new util.HashMap[Namespace, (Messages, Option[Schema])]()
+
 }
+
 

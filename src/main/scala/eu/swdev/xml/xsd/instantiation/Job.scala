@@ -1,6 +1,8 @@
 package eu.swdev.xml.xsd.instantiation
 
 import eu.swdev.xml.base.SomeValue
+import eu.swdev.xml.log
+import eu.swdev.xml.log.{Message, Messages}
 import eu.swdev.xml.name._
 import eu.swdev.xml.schema.ComplexType
 import eu.swdev.xml.schema.Facets.{HasTimeZone, HasDigits, HasLength, FacetOp}
@@ -13,7 +15,7 @@ import scala.util.{Failure, Success, Try}
 /**
   */
 
-trait JobMod {
+object JobMod {
 
   case class Job[+A](run: State => Step[A]) { self =>
 
@@ -98,17 +100,9 @@ trait JobMod {
     val schemaLocations: Map[Namespace, Option[String]] = schemaElem.schemaTop.collect { case Left(ie: ImportElem) => ie } map ( ie => (ie.namespace.map(new Namespace(_)).getOrElse(NoNamespace) -> ie.schemaLocation )) toMap
   }
   
-  type JobMsg = String
-  type JobLog = List[JobMsg]
+  case class State(config: JobConf, log: Messages)
 
-  case class State(config: JobConf, log: JobLog)
-
-  def preprendLog(msg: JobMsg, log: JobLog): JobLog = msg :: log
-  def concatLogs(log1: JobLog, log2: JobLog): JobLog = log1 ++ log2
-
-  def addError(state: State, msg: String): State = state.copy(log = msg +: state.log)
-
-  val emptyJobLog = Nil
+  def addError(state: State, msg: Message): State = state.copy(log = log.prepend(msg, state.log))
 
   def abort[C](msg: String): Job[C] = Job[C] { state => Abort(addError(state, msg)) }
 

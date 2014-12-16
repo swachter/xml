@@ -1,5 +1,6 @@
 package eu.swdev.xml.schema
 
+import eu.swdev.xml.name
 import eu.swdev.xml.name.{LocalName, Namespace}
 
 trait SchemaTopComponent
@@ -22,3 +23,16 @@ case class Schema(namespace: Namespace, symbolTable: SymbolTable) {
 
 }
 
+object Schema {
+  private implicit def toTuple(t: Type) = (t.name.localName, t)
+  val builtInSchema = Schema(
+    name.XsdNamespace,
+    SymbolTable.empty +
+      anyType + anySimpleType + anyAtomicType + untypedAtomicType +
+      booleanType +
+      doubleType +
+      decimalType + integerType + longType + intType +
+      stringType +
+      qNameType
+  )
+}
