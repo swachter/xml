@@ -89,7 +89,7 @@ sealed case class ComplexType(
   finalSet: Set[CtDerivationCtrl],
   prohibitedSubstitutions: Set[CtDerivationCtrl],
   assertions: List[Assertion]
-) extends DerivedType {
+) extends DerivedType with SchemaTopComponent {
   self =>
   override val accept: Accept[TypeVisitor] = new Accept[TypeVisitor] {
     override def apply[R, P](v: TypeVisitor[R, P], p: P): R = v.visit(self, p)
@@ -98,7 +98,7 @@ sealed case class ComplexType(
 
 sealed trait Assertion
 
-sealed trait SimpleType extends DerivedType {
+sealed trait SimpleType extends DerivedType with SchemaTopComponent {
   type VAL <: SimpleVal
   def derivation = Relation.Restriction
   def facets: Facets[VAL]

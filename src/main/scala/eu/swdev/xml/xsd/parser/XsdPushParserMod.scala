@@ -132,7 +132,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val identityConstraint: Parser[IdentityConstraintGroupElem] = unique | key | keyref
 
-  lazy val importElem: Parser[ImportElem] = xsElem("import")(annotated ~ schemaLocationAttr ~ namespaceAttr) gmap Generic[ImportElem]
+  lazy val importElem: Parser[ImportElem] = xsElem("import")(annotated ~ schemaLocationAttr.opt ~ namespaceAttr) gmap Generic[ImportElem]
 
   lazy val include: Parser[IncludeElem] = xsElem("include")(annotated ~ schemaLocationAttr) gmap Generic[IncludeElem]
 

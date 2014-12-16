@@ -138,7 +138,7 @@ case class GroupDefElem(loc: Location, id: Option[String], annotation: Option[An
 
 case class GroupRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], ref: QName, openAttrs: Map[QName, String]) extends NestedParticle with TypeDefParticle
 
-case class ImportElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: String, namespace: Option[String], openAttrs: Map[QName, String]) extends CompositionGroupElem
+case class ImportElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: Option[String], namespace: Option[String], openAttrs: Map[QName, String]) extends CompositionGroupElem
 
 case class IncludeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: String, openAttrs: Map[QName, String]) extends CompositionGroupElem
 

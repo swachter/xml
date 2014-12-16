@@ -22,10 +22,10 @@ trait JobMod {
     def flatMap[B](f: A => Job[B]): Job[B] = Job { state =>
 
       def go(step: Step[A]): Step[B] = step match {
-        case Await(name, symbolSpace, rec) => Await(name, symbolSpace, rec andThen go)
+        case Await(ref, rec) => Await(ref, rec andThen go)
         case Done(a, s1) => f(a).run(s1)
         case Abort(state) => Abort(state)
-        case Created(o, next) => Created(o, go(next))
+        case Created(a, next) => go(next)
       }
 
       go(run(state))
@@ -54,13 +54,17 @@ trait JobMod {
       as.foldRight(unit(Seq[B]()))((a, p) => map2(f(a), p)(_ +: _))
   }
 
+  /**
+   *
+   * @tparam A The type of the final result.
+   */
   trait Step[+A] {
 
     def map[B](f: A => B): Step[B] = this match {
-      case Await(name, symbolSpace, rec) => Await(name, symbolSpace, rec andThen Step.lift(f))
+      case Await(ref, rec) => Await(ref, rec andThen Step.lift(f))
       case Done(a, state) => Done(f(a), state)
       case Abort(state) => Abort(state)
-      case Created(a, next) => Created(a, next map f)
+      case Created(a, next) => Created(f(a), next map f)
     }
 
   }
@@ -69,61 +73,29 @@ trait JobMod {
     def lift[A, B](f: A => B): Step[A] => Step[B] = sa => sa map f
   }
 
-  case class Await[A, I](name: QName, symbolSpace: SymbolSpace[I], rec: Option[I] => Step[A]) extends Step[A]
+  case class Await[A, I](ref: Ref[I], rec: Option[I] => Step[A]) extends Step[A]
 
   case class Done[A](value: A, state: State) extends Step[A]
 
   case class Abort(state: State) extends Step[Nothing]
   
-  case class Created[A, O](value: O, next: Step[A]) extends Step[A]
+  case class Created[A](value: A, next: Step[A]) extends Step[A]
   
-  sealed trait SymbolSpace[X] {
-    type SymbolType = X
-    def name: String
+  sealed trait Ref[X] {
+    def symbolSpace: SymbolSpace[X]
   }
 
-  object SymbolSpace {
-    implicit case object Type extends SymbolSpace[Type] {
-      def name = "type"
-    }
-    implicit case object ElemDecl extends SymbolSpace[ElemDecl] {
-      def name = "element declaration"
-    }
-    implicit case object AttrDecl extends SymbolSpace[AttrDecl] {
-      def name = "attribute declaration"
-    }
-    implicit case object Group extends SymbolSpace[Group] {
-      def name = "group"
-    }
-    implicit case object AttrGroup extends SymbolSpace[AttrGroup] {
-      def name = "attribute group"
-    }
-    //implicit case object IdentityConstraint extends SymbolSpace[IdentityConstraint]
-    //implicit case object Notation extends SymbolSpace[Notation]
-  }
+  sealed case class LocalRef[X](symbolSpace: SymbolSpace[X], ncName: LocalName, stage: Stage) extends Ref[X]
 
-  trait Awaitable[X] {
-    type SymbolType
-    val symbolSpace: SymbolSpace[SymbolType]
-    def checkSymbolType(s: SymbolType): Option[Class[_]]
-  }
+  sealed case class GlobalRef[X](symbolSpace: SymbolSpace[X], qName: QName, schemaLocation: Option[String]) extends Ref[X]
 
-  implicit def symbolsAreAwaitable[S](implicit ss: SymbolSpace[S]) = new Awaitable[S] {
-    type SymbolType = S
-    val symbolSpace = ss
-    override def checkSymbolType(s: S) = None
-  }
+  sealed trait Stage
+  case object Created extends Stage
+  case object Completed extends Stage
 
-  implicit val simpleTypeIsAwaitable = new Awaitable[SimpleType] {
-    type SymbolType = Type
-    val symbolSpace = SymbolSpace.Type
-    override def checkSymbolType(s: Type) = if (s.isInstanceOf[SimpleType]) None else Some(classOf[SimpleType])
-  }
-
-
-  case class JobConf(schemaElem: SchemaElem) {
-    def schemaTargetNamespace: Namespace = Namespace(schemaElem.targetNamespace)
+  case class JobConf(schemaElem: SchemaElem, schemaTargetNamespace: Namespace) {
     def attributeFormDefault: Form = schemaElem.attributeFormDefault.value
+    val schemaLocations: Map[Namespace, Option[String]] = schemaElem.schemaTop.collect { case Left(ie: ImportElem) => ie } map ( ie => (ie.namespace.map(new Namespace(_)).getOrElse(NoNamespace) -> ie.schemaLocation )) toMap
   }
   
   type JobMsg = String
@@ -131,23 +103,41 @@ trait JobMod {
 
   case class State(config: JobConf, log: JobLog)
 
+  def preprendLog(msg: JobMsg, log: JobLog): JobLog = msg :: log
+  def concatLogs(log1: JobLog, log2: JobLog): JobLog = log1 ++ log2
+
   def addError(state: State, msg: String): State = state.copy(log = msg +: state.log)
 
   val emptyJobLog = Nil
 
   def abort[C](msg: String): Job[C] = Job[C] { state => Abort(addError(state, msg)) }
 
-  def await[A](name: QName)(implicit ev: Awaitable[A]): Job[A] = Job { state => Await[A, ev.symbolSpace.SymbolType](name, ev.symbolSpace, {
-    case Some(s) => {
-      ev.checkSymbolType(s) match {
-        case None => Done(s.asInstanceOf[A], state)
-        case Some(requiredType) => Abort(addError(state, s"reference has not the required type - symbol space: ${ev.symbolSpace.name}; name: $name; required type: ${requiredType.getName}; actual type: ${s.getClass.getName}"))
+  def await[A](name: QName)(implicit ev: SymbolSpace[A], ct: ClassTag[A]): Job[A] = {
+    Job { state => {
+
+      def doAwait(ref: Ref[A]) = Await[A, A](ref, {
+        case Some(s) => {
+          if (ct.runtimeClass.isInstance(s)) {
+            Done(s.asInstanceOf[A], state)
+          } else {
+            Abort(addError(state, s"reference has not the required type - symbol space: ${ev.name}; name: $name; required type: ${ct.runtimeClass.getName}; actual type: ${s.getClass.getName}"))
+          }
+        }
+        case None => Abort(addError(state, s"unresolved reference - symbol space: ${ev.name}; name: $name"))
+      })
+
+      if (name.namespace == state.config.schemaTargetNamespace) {
+        doAwait(LocalRef(ev, name.localName, Completed))
+      } else {
+        state.config.schemaLocations.get(name.namespace).fold[Step[A]] {
+          Abort(addError(state, s"namespace ${name.namespace} is not imported"))
+        } {
+          schemaLocation => doAwait(GlobalRef(ev, name, schemaLocation))
+        }
       }
-    }
-    case None => Abort(addError(state, s"unresolved reference - symbol space: ${ev.symbolSpace.name}; name: $name"))
-  })}
 
-
+    }}
+  }
 
   def created[A](a: A): Job[Unit] = Job { state => Created(a, Done((), state)) }
 
@@ -161,7 +151,7 @@ trait JobMod {
     baseType <- await[Type](cmp.content.base)
     attrs <- attrsModelJob(cmp.content)
     ct = ComplexType(???, baseType, ???, attrs, null, cmp.abstrct.value, ???, ???, ???)
-    _ <- created(ct)
+    _ <- created(ct: Type)
   } yield ct
 
   def attrsModelJob(cmp: ComplexTypeContent): Job[AttrsModel] = {
