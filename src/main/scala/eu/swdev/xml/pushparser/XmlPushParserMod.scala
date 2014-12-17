@@ -3,9 +3,11 @@ package eu.swdev.xml.pushparser
 import java.io.{StringReader, StringWriter}
 import javax.xml.stream.events.Comment
 import javax.xml.stream.{XMLInputFactory, XMLEventReader}
+import javax.xml.transform.Source
 
 import eu.swdev.pushparser.PushParserMod
 import eu.swdev.xml.base.{Location, PublicId, ResId, SystemId}
+import eu.swdev.xml.log.Messages
 import eu.swdev.xml.name._
 import shapeless.HNil
 
@@ -54,7 +56,7 @@ trait XmlPushParserMod extends PushParserMod {
   case class XmlParserState(
     namespacesStack: List[Namespaces],
     startedElements: List[QName],
-    log: List[String],
+    log: Messages,
     dataStack: List[StateData],
     payload: Payload
   ) {
@@ -125,7 +127,7 @@ trait XmlPushParserMod extends PushParserMod {
             } else {
               abort(state, s"can not end element; names differ - event.name: ${e.name}; head: ${state.startedElements.head}")
             }
-          case Some(i) => abort(state, s"can not end element - unexpected input: $i at position: ${i.location}")
+          case Some(i) => abort(state, s"can not end element '${state.startedElements.head}' - unexpected input: $i at position: ${i.location}")
           case i => abort(state, s"can not end element - missing input: $i")
         }
       }
@@ -225,6 +227,7 @@ trait XmlPushParserMod extends PushParserMod {
     go(0, Nil)
   })
 
+  def parseDocument[O](p: Parser[O], state: State, inputs: DriveInputs): DriveResult[O] = document(p).drive(state, inputs)
 }
 
 trait XmlEventReaderInputs {
@@ -296,6 +299,15 @@ trait XmlEventReaderInputs {
     go.filter(e => if (e.isCharacters) !e.asCharacters().isWhiteSpace else true).filter(!_.isInstanceOf[Comment]).map(convertEvent(_))
 
   }
+
+  private val inputFactory = XMLInputFactory.newInstance()
+
+  def inputs(source: Source): DriveInputs = {
+    val reader = inputFactory.createXMLEventReader(source)
+    inputs(reader)
+  }
+
+
 
 }
 

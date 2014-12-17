@@ -20,7 +20,7 @@ class XsdPushParserModTest extends FunSuite with Inside {
       inputs(reader)
     }
 
-    def parseDoc[O](p: Parser[O]): String => DriveResult[O] = s => document(p).drive(initialState(initialPayload), inputs(s))
+    def stringParser[O](p: Parser[O]): String => DriveResult[O] = s => parseDocument(p, initialState(initialPayload), inputs(s))
 
     def initialPayload: Payload
   }
@@ -67,19 +67,19 @@ class XsdPushParserModTest extends FunSuite with Inside {
       def initialPayload = ()
     }
 
-    val res = parsers.parseDoc(parsers.parseElement)("""<p:e xmlns:p="ns" a="1" b="2"/>""")
+    val res = parsers.stringParser(parsers.parseElement)("""<p:e xmlns:p="ns" a="1" b="2"/>""")
 
     inside(res) {
       case (Some((Some("1"), "2")), _, _, _) =>
     }
 
-    val res2 = parsers.parseDoc(parsers.parseNestedElement)("""<p:e xmlns:p="ns" a="1" b="2"><p:f c="3"/></p:e>""")
+    val res2 = parsers.stringParser(parsers.parseNestedElement)("""<p:e xmlns:p="ns" a="1" b="2"><p:f c="3"/></p:e>""")
 
     inside(res2) {
       case (Some((Some("1"), "2", "3")), _, _, _) =>
     }
 
-    val res3 = parsers.parseDoc(parsers.parseNestedElement2)("""<p:e xmlns:p="ns" a="1" b="2"><p:f c="3"/></p:e>""")
+    val res3 = parsers.stringParser(parsers.parseNestedElement2)("""<p:e xmlns:p="ns" a="1" b="2"><p:f c="3"/></p:e>""")
 
     inside(res3) {
       case (Some((Some("1"), "2", "3")), _, _, _) =>
@@ -94,7 +94,7 @@ class XsdPushParserModTest extends FunSuite with Inside {
 
   test("annotation") {
 
-    def parseAnnotation(raw: String) = xsdParsers.parseDoc(xsdParsers.annotation)(raw)
+    def parseAnnotation(raw: String) = xsdParsers.stringParser(xsdParsers.annotation)(raw)
 
     inside(parseAnnotation(
       """
@@ -166,7 +166,7 @@ class XsdPushParserModTest extends FunSuite with Inside {
 
   test("union") {
 
-    def parse(raw: String) = xsdParsers.parseDoc(xsdParsers.union)(raw)
+    def parse(raw: String) = xsdParsers.stringParser(xsdParsers.union)(raw)
 
     inside(parse(
       """

@@ -3,6 +3,7 @@ package eu.swdev.xml.xsd.parser
 import java.net.URI
 
 import eu.swdev.xml.base._
+import eu.swdev.xml.log.Messages
 import eu.swdev.xml.name._
 import eu.swdev.xml.pushparser.XmlPushParserMod
 import eu.swdev.xml.schema._
@@ -13,6 +14,11 @@ import shapeless.{::, Generic, HList, HNil}
 import scala.util.{Failure, Success, Try}
 
 trait XsdPushParserMod extends XmlPushParserMod {
+
+  def parseSchemaDocument(inputs: DriveInputs): (Messages, Option[SchemaElem]) = {
+    val driveResult = parseDocument(schema, initialState, inputs)
+    (driveResult._2.log, driveResult._1)
+  }
 
   type Payload = Int
 

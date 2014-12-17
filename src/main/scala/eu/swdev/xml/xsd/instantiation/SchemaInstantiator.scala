@@ -135,7 +135,7 @@ trait SchemaInstantiator { self: SchemaStore =>
               }
               // the schema has not yet been imported
               case None => {
-                val t = getSchema(qName.namespace, schemaLocation)
+                val t = importSchema(qName.namespace, schemaLocation)
                 val newState = state.copy(log = log.concat(t._1, state.log), imported = state.imported + (qName.namespace -> t._2))
                 drive(step, newState)
               }
@@ -143,31 +143,30 @@ trait SchemaInstantiator { self: SchemaStore =>
           }
         }
         case Done(a, jobState) => {
-          val t = localNameAndSymbolSpace(a)
-          val ova: Option[VAL[A]] = state.localWaiting.get(t._1, Completed)(t._2)
-          val newSteps: Seq[Step[SchemaTopComponent]] = ova.map(_.map(_(Some(a)))).getOrElse(Seq())
-          val newLocalWaiting = state.localWaiting.-(t._1, Completed)(t._2)
-          state.copy(
-            results = state.results.+(t._1, Completed, a)(t._2),
-            localWaiting = newLocalWaiting,
-            steps = newSteps ++ state.steps,
-            log = log.concat(jobState.log, state.log))
+          val newState = stateAfterCreationOrCompletion(a, Completed, state)
+          newState.copy(
+            log = log.concat(jobState.log, newState.log)
+          )
         }
         case Abort(jobState) => {
           state.copy(log = log.concat(jobState.log, state.log))
         }
-        case Created(a, next) => {
-          val t = localNameAndSymbolSpace(a)
-          val ova: Option[VAL[A]] = state.localWaiting.get(t._1, Created)(t._2)
-          val newSteps: Seq[Step[SchemaTopComponent]] = ova.map(_.map(_(Some(a)))).getOrElse(Seq())
-          val newLocalWaiting = state.localWaiting.-(t._1, Created)(t._2)
-          val newState = state.copy(
-            results = state.results.+(t._1, Created, a)(t._2),
-            localWaiting = newLocalWaiting,
-            steps = newSteps ++ state.steps)
+        case Created(o, next) => {
+          val newState = stateAfterCreationOrCompletion(o, Created, state)
           drive(next, newState)
         }
       }
+    }
+
+    def stateAfterCreationOrCompletion[C <: SchemaTopComponent](c: C, stage: Stage, state: InstantiationState): InstantiationState = {
+      val t = localNameAndSymbolSpace(c)
+      val ova: Option[VAL[C]] = state.localWaiting.get(t._1, stage)(t._2)
+      val newSteps: Seq[Step[SchemaTopComponent]] = ova.map(_.map(_(Some(c)))).getOrElse(Seq())
+      val newLocalWaiting = state.localWaiting.-(t._1, stage)(t._2)
+      state.copy(
+        results = state.results.+(t._1, stage, c)(t._2),
+        localWaiting = newLocalWaiting,
+        steps = newSteps ++ state.steps)
     }
 
     def localNameAndSymbolSpace[A <: SchemaTopComponent](a: A): (LocalName, SymbolSpace[A]) = {

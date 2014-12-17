@@ -27,7 +27,7 @@ object JobMod {
         case Await(ref, rec) => Await(ref, rec andThen go)
         case Done(a, s1) => f(a).run(s1)
         case Abort(state) => Abort(state)
-        case Created(a, next) => go(next)
+        case Created(o, next) => Created(o, go(next))
       }
 
       go(run(state))
@@ -66,7 +66,7 @@ object JobMod {
       case Await(ref, rec) => Await(ref, rec andThen Step.lift(f))
       case Done(a, state) => Done(f(a), state)
       case Abort(state) => Abort(state)
-      case Created(a, next) => Created(f(a), next map f)
+      case Created(o, next) => Created(o, next map f)
     }
 
   }
@@ -81,7 +81,7 @@ object JobMod {
 
   case class Abort(state: State) extends Step[Nothing]
   
-  case class Created[A](value: A, next: Step[A]) extends Step[A]
+  case class Created[A, O <: SchemaTopComponent](value: O, next: Step[A]) extends Step[A]
   
   sealed trait Ref[X] {
     def symbolSpace: SymbolSpace[X]
@@ -122,6 +122,8 @@ object JobMod {
 
       if (name.namespace == state.config.schemaTargetNamespace) {
         doAwait(LocalRef(ev, name.localName, Completed))
+      } else if (name.namespace == XsdNamespace) {
+        doAwait(GlobalRef(ev, name, None))
       } else {
         state.config.schemaLocations.get(name.namespace).fold[Step[A]] {
           Abort(addError(state, s"namespace ${name.namespace} is not imported"))
@@ -133,7 +135,7 @@ object JobMod {
     }}
   }
 
-  def created[A](a: A): Job[Unit] = Job { state => Created(a, Done((), state)) }
+  def created[O <: SchemaTopComponent](a: O): Job[Unit] = Job { state => Created(a, Done((), state)) }
 
   def getConf: Job[JobConf] = Job { state => Done(state.config, state) }
   
@@ -145,7 +147,7 @@ object JobMod {
     baseType <- await[Type](cmp.content.base)
     attrs <- attrsModelJob(cmp.content)
     ct = ComplexType(???, baseType, ???, attrs, null, cmp.abstrct.value, ???, ???, ???)
-    _ <- created(ct: Type)
+    _ <- created(ct)
   } yield ct
 
   def attrsModelJob(cmp: ComplexTypeContent): Job[AttrsModel] = {

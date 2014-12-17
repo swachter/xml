@@ -5,14 +5,15 @@ import java.util
 import eu.swdev.xml.log._
 import eu.swdev.xml.name.Namespace
 import eu.swdev.xml.schema.Schema
+import eu.swdev.xml.xsd.cmp.SchemaElem
 
 trait SchemaStore {
 
-  def getSchema(namespace: Namespace, schemaLocation: Option[String]): (Messages, Option[Schema])
+  def importSchema(namespace: Namespace, schemaLocation: Option[String]): (Messages, Option[Schema])
 
 }
 
-trait SimpleSchemaStore extends SchemaStore { self: SchemaParser with SchemaInstantiator =>
+trait SimpleSchemaStore extends SchemaStore { self: SchemaParser with SchemaInstantiator with SchemaResolver with SchemaLoader =>
 
   def builtInSchemas: Iterable[Schema]
 
@@ -20,22 +21,25 @@ trait SimpleSchemaStore extends SchemaStore { self: SchemaParser with SchemaInst
 
   private lazy val builtIn = builtInSchemas.map(s => s.namespace -> (emptyMessages, Some(s))).toMap
 
-  def schemaImport(namespace: Namespace, schemaLocation: Option[String]): (Messages, Option[Schema]) = {
+  override def importSchema(namespace: Namespace, schemaLocation: Option[String]): (Messages, Option[Schema]) = {
     builtIn.getOrElse(namespace, {
       loadedSchemas.synchronized {
         val t = loadedSchemas.get(namespace)
         if (t == null) {
-          val (log, optSchemaElem) = parseSchema(namespace, schemaLocation)
-          val tt = optSchemaElem.fold {
-            (log, Option.empty[Schema])
+          
+          val (rLog, optInputs) = resolveSchema(namespace, schemaLocation)
+          
+          val res@(log2, optSchema) = optInputs.fold {
+            (rLog, Option.empty[Schema])
           } {
-            schemaElem => {
-              val (l, optSchema) = instantiate(schemaElem, namespace)
-              (concat(l, log), optSchema)
+            inputs => {
+              val (pLog, optSchema) = loadSchema(inputs)
+              (concat(pLog, rLog), optSchema)
             }
           }
-          loadedSchemas.put(namespace, tt)
-          tt
+
+          loadedSchemas.put(namespace, res)
+          res
         } else {
           t
         }
