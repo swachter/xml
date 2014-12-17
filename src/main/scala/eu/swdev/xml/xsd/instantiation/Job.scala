@@ -1,6 +1,6 @@
 package eu.swdev.xml.xsd.instantiation
 
-import eu.swdev.xml.base.SomeValue
+import eu.swdev.xml.base.{DefaultValue, SomeValue}
 import eu.swdev.xml.log
 import eu.swdev.xml.log.{Message, Messages}
 import eu.swdev.xml.name._
@@ -33,10 +33,18 @@ object JobMod {
       go(run(state))
     }
 
+    def >>=[B](f: A => Job[B]) = this.flatMap(f)
+
     def &[O2](p2: => Job[O2]): Job[(A, O2)] = for {
       v1 <- this
       v2 <- p2
     } yield (v1, v2)
+
+    def filter(f: A => Boolean): Job[A] = withFilter(f)
+
+    def withFilter(f: A => Boolean): Job[A] = Job(state => {
+      run(state).filter(f)
+    })
 
 
   }
@@ -67,6 +75,13 @@ object JobMod {
       case Done(a, state) => Done(f(a), state)
       case Abort(state) => Abort(state)
       case Created(o, next) => Created(o, next map f)
+    }
+
+    def filter(f: A => Boolean): Step[A] = this match {
+      case Await(ref, rec) => Await(ref, rec andThen (step => step.filter(f)))
+      case Done(a, state) => if (f(a)) Done(a, state) else Abort(state)
+      case Abort(state) => Abort(state)
+      case Created(o, next) => Created(o, next filter f)
     }
 
   }
@@ -143,12 +158,96 @@ object JobMod {
   //
   //
 
+
+  // 3.4.1
   def complexTypeJob(cmp: ComplexTypeElem): Job[ComplexType] = for {
+    conf <- getConf
+    typeName <- typeName(cmp.name)
     baseType <- await[Type](cmp.content.base)
     attrs <- attrsModelJob(cmp.content)
-    ct = ComplexType(???, baseType, ???, attrs, null, cmp.abstrct.value, ???, ???, ???)
+    finl = cmp.finl.getOrElse(conf.schemaElem.finalDefault.value).toSet[CtDerivationCtrl]
+    block = cmp.block.getOrElse(conf.schemaElem.blockDefault.value).toSet[CtBlockCtrl]
+    assertions <- assertionsJob(cmp.content)
+    (contentModel, completeContentModelJob) <- contentModelJob(cmp.content)
+    ct = ComplexType(typeName, baseType, cmp.content.derivationMethod, attrs, contentModel, cmp.abstrct.value, finl, block, assertions)
     _ <- created(ct)
+    _ <- completeContentModelJob
   } yield ct
+
+  def assertionsJob(content: ComplexTypeContent): Job[Seq[Assertion]] = {
+    val assertElems: Seq[AssertElem] = content match {
+      case c: ComplexContentAbbrev => c.asserts
+      case c: ComplexContentElem => c.derivation.asserts
+      case c: SimpleContentElem => c.derivation.asserts
+    }
+    Job.traverse(assertElems)(assertionJob(_))
+  }
+
+  def assertionJob(ae: AssertElem): Job[Assertion] = for {
+    conf <- getConf
+  } yield {
+    val xPathDefaultNamespace = ae.xPathDefaultNamespace.getOrElse(conf.schemaElem.xPathDefaultNamespace.value) match {
+      case XPathDefaultNamespace.Default => ae.namespaces.defaultNamespace
+      case XPathDefaultNamespace.Target => conf.schemaTargetNamespace
+      case XPathDefaultNamespace.Local => NoNamespace
+      case XPathDefaultNamespace.Uri(uri) => Namespace(uri)
+    }
+    Assertion(ae.test, xPathDefaultNamespace)
+  }
+
+  def contentModelJob(content: ComplexTypeContent): Job[(ContentModel, Job[Unit])] = {
+    content match {
+      case c: ComplexContentAbbrev => ???
+      case c: ComplexContentElem => ???
+      case c: SimpleContentElem => for {
+        simpleTypeDefinition <- simpleTypeDefinitionJob(c.derivation)
+      } yield (SimpleContentModel(simpleTypeDefinition), Job.unit(()))
+    }
+  }
+
+  // 3.4.2.2 determination of the simple type definition of the content type property
+  def simpleTypeDefinitionJob(derivation: SimpleDerivation): Job[SimpleType] = {
+    await[Type](derivation.base) >>= { baseType =>
+      (baseType, derivation) match {
+        // 1
+        case (bt: ComplexType, d: SimpleContentRestrictionElem) if (bt.content.simpleTypeDefinition.isDefined) => {
+          for {
+            b <- d.simpleType.fold {
+              Job.unit(bt.content.simpleTypeDefinition.get)
+            } {
+              simpleTypeElem => simpleTypeJob(simpleTypeElem)
+            }
+            typeName <- typeName(DefaultValue(d.syntheticTypeName))
+            restricted <- simpleTypeRestriction(typeName, b, d.facetSpecs)
+          } yield restricted
+        }
+        // 2
+        case (bt: ComplexType, d: SimpleContentRestrictionElem) if (bt.content.isMixedAndEmptiable) => {
+          for {
+            sb <- d.simpleType.fold {
+              Job.unit[SimpleType](anySimpleType)
+            } {
+              simpleTypeElem => simpleTypeJob(simpleTypeElem)
+            }
+            typeName <- typeName(DefaultValue(d.syntheticTypeName))
+            restricted <- simpleTypeRestriction(typeName, sb, d.facetSpecs)
+          } yield restricted
+        }
+        // 3
+        case (bt: ComplexType, d: SimpleContentExtensionElem) if (bt.content.simpleTypeDefinition.isDefined) => {
+          Job.unit(bt.content.simpleTypeDefinition.get)
+        }
+        // 4
+        case (bt: SimpleType, d: SimpleContentExtensionElem) if (true) => {
+          Job.unit(bt)
+        }
+        // 5
+        case _ => {
+          Job.unit(anySimpleType)
+        }
+      }
+    }
+  }
 
   def attrsModelJob(cmp: ComplexTypeContent): Job[AttrsModel] = {
     val (attrs, anyAttribute) = cmp match {

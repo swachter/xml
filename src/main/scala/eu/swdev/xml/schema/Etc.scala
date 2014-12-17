@@ -11,15 +11,16 @@ sealed trait StDerivationCtrl extends TypeDerivationCtrl
 sealed trait BlockCtrl extends Relation
 sealed trait CtBlockCtrl extends BlockCtrl
 sealed trait ElemBlockCtrl extends BlockCtrl
-sealed trait CtFinalCtrl extends Relation
 sealed trait ElemFinalCtrl extends Relation
 
 object Relation {
-  object Extension    extends CtDerivationCtrl                       with CtBlockCtrl with CtFinalCtrl with ElemBlockCtrl with ElemFinalCtrl
-  object Restriction  extends CtDerivationCtrl with StDerivationCtrl with CtBlockCtrl with CtFinalCtrl with ElemBlockCtrl with ElemFinalCtrl
+  object Extension    extends CtDerivationCtrl                       with CtBlockCtrl with ElemBlockCtrl with ElemFinalCtrl
+  object Restriction  extends CtDerivationCtrl with StDerivationCtrl with CtBlockCtrl with ElemBlockCtrl with ElemFinalCtrl
   object Substitution extends                                                                               ElemBlockCtrl
   object List         extends                       StDerivationCtrl
   object Union        extends                       StDerivationCtrl
+
+  val all = Seq(Extension, Restriction, Substitution, List, Union)
 }
 
 case class DisallowedNames(qNames: Set[QName], defined: Boolean, sibling: Boolean)

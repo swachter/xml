@@ -12,6 +12,8 @@ class Namespaces(val underlying: Map[Prefix, Namespace]) extends AnyVal {
 
   def namespaceForPrefix(prefix: Prefix): Option[Namespace] = underlying.get(prefix)
 
+  def defaultNamespace: Namespace = underlying(NoPrefix)
+
   def nestedScope(namespaceDecls: TraversableOnce[(Prefix, Namespace)]): Namespaces =
     new Namespaces(namespaceDecls.foldLeft(underlying)((map, nsDecl) => nsDecl match {
       case (XmlPrefix, XmlNamespace) => map

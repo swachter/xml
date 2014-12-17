@@ -2,10 +2,12 @@ package eu.swdev.xml.xsd.cmp
 
 import java.net.URI
 
+import eu.swdev.etc.NotNothing
 import eu.swdev.xml.base.{SomeValue, WhitespaceProcessing, Location}
 import eu.swdev.xml.name.{Namespaces, QName}
 import eu.swdev.xml.schema._
 
+import scala.reflect.ClassTag
 import scala.util.matching.Regex
 
 /**
@@ -63,14 +65,19 @@ sealed trait ComplexDerivation {
   def base: QName
   def attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]]
   def anyAttribute: Option[AnyAttributeElem]
+  def derivationMethod: CtDerivationCtrl
+  def asserts: Seq[AssertElem]
 }
 
 sealed trait SimpleDerivation {
   def base: QName
+  def derivationMethod: CtDerivationCtrl
+  def asserts: Seq[AssertElem]
 }
 
 sealed trait ComplexTypeContent {
   def base: QName
+  def derivationMethod: CtDerivationCtrl
 }
 
 sealed trait ComplexContent extends ComplexTypeContent
@@ -114,17 +121,23 @@ case class ChoiceElem(loc: Location, id: Option[String], annotation: Option[Anno
 
 case class ComplexContentAbbrev(openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem]) extends ComplexContent {
   override def base: QName = XsNames.ANY_TYPE
+  override def derivationMethod = Relation.Restriction
 }
 
 case class ComplexContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mixed: Option[Boolean], derivation: ComplexDerivation, openAttrs: Map[QName, String]) extends ComplexContent {
   override def base: QName = derivation.base
+  override def derivationMethod = derivation.derivationMethod
 }
 
-case class ComplexExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivation
+case class ComplexExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivation {
+  override def derivationMethod = Relation.Extension
+}
 
-case class ComplexRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivation
+case class ComplexRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivation {
+  override def derivationMethod = Relation.Restriction
+}
 
-case class ComplexTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: SomeValue[String], mixed: Option[Boolean], abstrct: SomeValue[Boolean], finl: Option[RelationSet[CtFinalCtrl]], block: Option[RelationSet[CtBlockCtrl]], defaultAttributesApply: Option[Boolean], content: ComplexTypeContent, openAttrs: Map[QName, String]) extends RedefinableGroupElem
+case class ComplexTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: SomeValue[String], mixed: Option[Boolean], abstrct: SomeValue[Boolean], finl: Option[RelationSet[CtDerivationCtrl]], block: Option[RelationSet[CtBlockCtrl]], defaultAttributesApply: Option[Boolean], content: ComplexTypeContent, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
 case class DefaultOpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], appliesToEmpty: Option[Boolean], mode: Option[DefaultOpenContentModeToken], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
 
@@ -166,11 +179,16 @@ case class SequenceElem(loc: Location, id: Option[String], annotation: Option[An
 
 case class SimpleContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], derivation: SimpleDerivation, openAttrs: Map[QName, String]) extends ComplexTypeContent {
   override def base: QName = derivation.base
+  def derivationMethod: CtDerivationCtrl = derivation.derivationMethod
 }
 
-case class SimpleContentExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivation
+case class SimpleContentExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivation {
+  override def derivationMethod = Relation.Extension
+}
 
-case class SimpleContentRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, simpleType: Option[SimpleTypeElem], facets: Seq[FacetElem], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivation with HasFacetSpecs
+case class SimpleContentRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, simpleType: Option[SimpleTypeElem], facets: Seq[FacetElem], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], syntheticTypeName: String, openAttrs: Map[QName, String]) extends SimpleDerivation with HasFacetSpecs {
+  override def derivationMethod = Relation.Restriction
+}
 
 case class SimpleTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: SomeValue[String], finl: SomeValue[RelationSet[TypeDerivationCtrl]], derivation: SimpleDerivationGroupElem, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
@@ -182,7 +200,7 @@ case class UnionElem(loc: Location, id: Option[String], annotation: Option[Annot
 
 //
 
-case class AssertElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: Option[String], xPathDefaultNamespace: Option[XPathDefaultNamespace], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class AssertElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: String, xPathDefaultNamespace: Option[XPathDefaultNamespace], namespaces: Namespaces, openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
 case class ExplicitTimeZoneElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: ExplicitTimeZone, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
 
@@ -244,6 +262,20 @@ object OpenContentModeToken {
 sealed trait RelationSet[+R <: Relation]
 
 object RelationSet {
+
   object All extends RelationSet[Nothing]
+
+  def all[R <: Relation]: RelationSet[R] = All
+
   sealed case class Items[R <: Relation](list: List[R]) extends RelationSet[R]
+
+  implicit class RelationSetOps[R <: Relation](rs: RelationSet[R]) {
+    // require that the S type is not derived as being Nothing. This happens if
+    // no type annotation is given at the call site.
+    def toSet[S <: R : ClassTag : NotNothing]: Set[S] = (rs match {
+      case All => Relation.all
+      case Items(list) => list
+    }).collect { case s: S => s }.toSet
+  }
+
 }

@@ -84,11 +84,11 @@ sealed case class ComplexType(
   baseType: Type,
   derivation: CtDerivationCtrl,
   attrs: AttrsModel,
-  var content: ContentModel,
+  content: ContentModel,
   isAbstract: Boolean,
   finalSet: Set[CtDerivationCtrl],
-  prohibitedSubstitutions: Set[CtDerivationCtrl],
-  assertions: List[Assertion]
+  prohibitedSubstitutions: Set[CtBlockCtrl],
+  assertions: Seq[Assertion]
 ) extends DerivedType with SchemaTopComponent {
   self =>
   override val accept: Accept[TypeVisitor] = new Accept[TypeVisitor] {
@@ -96,7 +96,7 @@ sealed case class ComplexType(
   }
 }
 
-sealed trait Assertion
+case class Assertion(test: String, xPathDefaultNamespace: Namespace)
 
 sealed trait SimpleType extends DerivedType with SchemaTopComponent {
   type VAL <: SimpleVal

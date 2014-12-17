@@ -47,7 +47,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val appliesToEmptyAttr: Parser[Boolean] = booleanAttr("appliesToEmpty")
 
-  lazy val assert: Parser[AssertElem] = xsElem("assert")(annotated ~ testAttr.opt ~ xPathDefaultNamespaceAttr.opt) gmap Generic[AssertElem]
+  lazy val assert: Parser[AssertElem] = xsElem("assert")(annotated ~ testAttr ~ xPathDefaultNamespaceAttr.opt ~ namespaces) gmap Generic[AssertElem]
 
   lazy val attrDecls = either(attributeL, attributeGroupRef).rep ~ anyAttribute.opt
 
@@ -80,7 +80,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val complexTypeBlockAttr: Parser[RelationSet[CtBlockCtrl]] = derivationCtrlAttr("block")(relExtension orElse relRestriction)
 
-  lazy val complexTypeFinalAttr: Parser[RelationSet[CtFinalCtrl]] = derivationCtrlAttr("final")(relExtension orElse relRestriction)
+  lazy val complexTypeFinalAttr: Parser[RelationSet[CtDerivationCtrl]] = derivationCtrlAttr("final")(relExtension orElse relRestriction)
 
   lazy val complexTypeContent: Parser[ComplexTypeContent] = simpleContent | complexContent | complexContentAbbrev
 
@@ -242,7 +242,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val simpleContentExtension: Parser[SimpleContentExtensionElem] = xsElem("extension")(annotated ~ baseAttr ~ attrDecls ~ assert.rep) gmap Generic[SimpleContentExtensionElem]
 
-  lazy val simpleContentRestriction: Parser[SimpleContentRestrictionElem] = xsElem("restriction")(annotated ~ baseAttr ~ simpleRestrictionModel ~ attrDecls ~ assert.rep) gmap Generic[SimpleContentRestrictionElem]
+  lazy val simpleContentRestriction: Parser[SimpleContentRestrictionElem] = xsElem("restriction")(annotated ~ baseAttr ~ simpleRestrictionModel ~ attrDecls ~ assert.rep ~ syntheticTypeName) gmap Generic[SimpleContentRestrictionElem]
 
   lazy val simpleDerivationGroupElem: Parser[SimpleDerivationGroupElem] = simpleTypeRestriction | list | union
 
@@ -300,7 +300,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   def facet[X](name: String, bind: String => Parser[X]) = xsElem(name)(annotated ~ (valueAttr >>= bind) ~ booleanAttr("fixed").opt)
 
-  lazy val assertion: Parser[AssertElem] = xsElem("assertion")(annotated ~ testAttr.opt ~ xPathDefaultNamespaceAttr.opt) gmap Generic[AssertElem]
+  lazy val assertion: Parser[AssertElem] = xsElem("assertion")(annotated ~ testAttr ~ xPathDefaultNamespaceAttr.opt ~ namespaces) gmap Generic[AssertElem]
 
   lazy val explicitTimezone: Parser[ExplicitTimeZoneElem] = facet("explicitTimezone", (s: String) => s match {
     case "optional" => success(ExplicitTimeZone.Optional)
@@ -309,21 +309,21 @@ trait XsdPushParserMod extends XmlPushParserMod {
     case s => fail(s"invalid explicit timezone value: $s")
   }) gmap Generic[ExplicitTimeZoneElem]
 
-  lazy val enumeration: Parser[EnumerationElem] = noFixedFacet("enumeration") ~ getState.map(_.namespacesStack.head) gmap Generic[EnumerationElem]
+  lazy val enumeration: Parser[EnumerationElem] = noFixedFacet("enumeration") ~ namespaces gmap Generic[EnumerationElem]
 
   lazy val fractionDigits: Parser[FractionDigitsElem] = facet("fractionDigits", parseInt) gmap Generic[FractionDigitsElem]
 
   lazy val length: Parser[LengthElem] = facet("length", parseInt) gmap Generic[LengthElem]
 
-  lazy val maxExclusive: Parser[MaxExclusiveElem] = facet("maxExclusive") ~ getState.map(_.namespacesStack.head) gmap Generic[MaxExclusiveElem]
+  lazy val maxExclusive: Parser[MaxExclusiveElem] = facet("maxExclusive") ~ namespaces gmap Generic[MaxExclusiveElem]
 
-  lazy val maxInclusive: Parser[MaxInclusiveElem] = facet("maxInclusive") ~ getState.map(_.namespacesStack.head) gmap Generic[MaxInclusiveElem]
+  lazy val maxInclusive: Parser[MaxInclusiveElem] = facet("maxInclusive") ~ namespaces gmap Generic[MaxInclusiveElem]
 
   lazy val maxLength: Parser[MaxLengthElem] = facet("maxLength", parseInt) gmap Generic[MaxLengthElem]
 
-  lazy val minExclusive: Parser[MinExclusiveElem] = facet("minExclusive") ~ getState.map(_.namespacesStack.head) gmap Generic[MinExclusiveElem]
+  lazy val minExclusive: Parser[MinExclusiveElem] = facet("minExclusive") ~ namespaces gmap Generic[MinExclusiveElem]
 
-  lazy val minInclusive: Parser[MinInclusiveElem] = facet("minInclusive") ~ getState.map(_.namespacesStack.head) gmap Generic[MinInclusiveElem]
+  lazy val minInclusive: Parser[MinInclusiveElem] = facet("minInclusive") ~ namespaces gmap Generic[MinInclusiveElem]
 
   lazy val minLength: Parser[MinLengthElem] = facet("minLength", parseInt) gmap Generic[MinLengthElem]
 
@@ -370,6 +370,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   private def qNamesAttr(name: String): Parser[List[QName]] = strAttr(name) map (_.split("\\s+").toList) >>= (Parser.traverse(_)(resolveQn))
 
+  val namespaces: Parser[Namespaces] = getState.map(_.namespacesStack.head)
+
   private def booleanAttr(name: String): Parser[Boolean] = strAttr(name) >>= {
     case "true" => success(true)
     case "1" => success(true)
@@ -397,6 +399,11 @@ trait XsdPushParserMod extends XmlPushParserMod {
   } yield {
     o.fold[SomeValue[String]](DefaultValue(s"##type$p##"))(DefinedValue(_))
   }
+
+  private def syntheticTypeName: Parser[String] = for {
+    p <- getPayload
+    _ <- setPayload(p + 1)
+  } yield s"##type$p##"
 
   private def stringToNsToken(string: String): Parser[NamespaceItemToken] = string match {
     case "##targetNamespace" => success(NamespaceItemToken.TargetNamespace)
