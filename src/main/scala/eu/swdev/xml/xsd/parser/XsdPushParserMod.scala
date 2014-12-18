@@ -6,6 +6,7 @@ import eu.swdev.xml.base._
 import eu.swdev.xml.log.Messages
 import eu.swdev.xml.name._
 import eu.swdev.xml.pushparser.XmlPushParserMod
+import eu.swdev.xml.schema.OpenContentMode.Interleave
 import eu.swdev.xml.schema._
 import eu.swdev.xml.xsd.cmp._
 import shapeless.ops.hlist.Prepend
@@ -29,7 +30,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val abstractAttr = booleanAttr("abstract")
 
-  lazy val all: Parser[AllElem] = xsElem("all")(annotated ~ nestedParticle.rep) gmap Generic[AllElem]
+  lazy val all: Parser[AllElem] = xsElem("all")(annotated ~ occurs ~ nestedParticle.rep) gmap Generic[AllElem]
 
   lazy val alternative: Parser[AlternativeElem] = xsElem("alternative")(annotated ~ testAttr.opt ~ typeAttr.opt ~ xPathDefaultNamespaceAttr.opt ~ either(simpleType, complexType).opt) gmap Generic[AlternativeElem]
 
@@ -64,11 +65,11 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val blockDefaultAttr: Parser[SomeValue[RelationSet[BlockCtrl]]] = derivationCtrlAttr("blockDefault")(relExtension orElse relRestriction orElse relSubstitution).some(RelationSet.Items(Nil))
 
-  lazy val choice: Parser[ChoiceElem] = xsElem("choice")(annotated ~ nestedParticle.rep) gmap Generic[ChoiceElem]
+  lazy val choice: Parser[ChoiceElem] = xsElem("choice")(annotated ~ occurs ~ nestedParticle.rep) gmap Generic[ChoiceElem]
 
   lazy val complexContent: Parser[ComplexContentElem] = xsElem("complexContent")(annotated ~ mixedAttr.opt ~ (complexRestriction | complexExtension)) gmap Generic[ComplexContentElem]
   
-  lazy val complexContentAbbrev: Parser[ComplexContentAbbrev] = complexContentModel gmap Generic[ComplexContentAbbrev]
+  lazy val complexContentAbbrev: Parser[ComplexContentAbbrev] = getState.map(_.lastLocation.get) ~ complexContentModel gmap Generic[ComplexContentAbbrev]
 
   lazy val complexContentModel = openContent.opt ~ typeDefParticle.opt ~ attrDecls ~ assert.rep
 
@@ -82,7 +83,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val complexTypeFinalAttr: Parser[RelationSet[CtDerivationCtrl]] = derivationCtrlAttr("final")(relExtension orElse relRestriction)
 
-  lazy val complexTypeContent: Parser[ComplexTypeContent] = simpleContent | complexContent | complexContentAbbrev
+  lazy val complexTypeContent: Parser[ComplexTypeContentCmp] = simpleContent | complexContent | complexContentAbbrev
 
   lazy val compositionGroupElem: Parser[CompositionGroupElem] = include | importElem | redefine | overrideElem
 
@@ -90,11 +91,11 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val defaultAttributesAttr: Parser[QName] = qnAttr("defaultAttributes")
 
-  lazy val defaultOpenContent: Parser[DefaultOpenContentElem] = xsElem("defaultOpenContent")(annotated ~ appliesToEmptyAttr.opt ~ defaultOpenContentModeAttr.opt ~ openContentAny.opt) gmap Generic[DefaultOpenContentElem]
+  lazy val defaultOpenContent: Parser[DefaultOpenContentElem] = xsElem("defaultOpenContent")(annotated ~ appliesToEmptyAttr.some(false) ~ defaultOpenContentModeAttr.some(Interleave) ~ openContentAny) gmap Generic[DefaultOpenContentElem]
 
-  lazy val defaultOpenContentModeAttr: Parser[DefaultOpenContentModeToken] = strAttr("mode") >>= {
-    case "interleave" => success(OpenContentModeToken.Interleave)
-    case "suffix" => success(OpenContentModeToken.Suffix)
+  lazy val defaultOpenContentModeAttr: Parser[DefaultOpenContentMode] = strAttr("mode") >>= {
+    case "interleave" => success(OpenContentMode.Interleave)
+    case "suffix" => success(OpenContentMode.Suffix)
     case s => fail(s"invalid open content mode: $s")
   }
 
@@ -132,7 +133,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val groupDef: Parser[GroupDefElem] = xsElem("group")(annotated ~ nameAttr ~ (all | choice | sequence)) gmap Generic[GroupDefElem]
 
-  lazy val groupRef: Parser[GroupRefElem] = xsElem("group")(annotated ~ refAttr) gmap Generic[GroupRefElem]
+  lazy val groupRef: Parser[GroupRefElem] = xsElem("group")(annotated ~ refAttr ~ occurs) gmap Generic[GroupRefElem]
 
   lazy val idAttr: Parser[IdAttrValue] = strAttr("id").opt
 
@@ -169,7 +170,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val nameAttr = strAttr("name")
 
-  lazy val nestedParticle: Parser[NestedParticle] = element | groupRef | choice | sequence | any
+  lazy val nestedParticle: Parser[NestedParticleCmp] = element | groupRef | choice | sequence | any
 
   lazy val namespaceAttr = optionalAttr(QNameFactory.caching(LocalName("namespace")))
 
@@ -200,14 +201,14 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val openAttrs: Parser[OpenAttrsValue] = selectAttrs(_.namespace != XsdNamespace)
 
-  lazy val openContent: Parser[OpenContentElem] = xsElem("openContent")(annotated ~ openContentModeAttr.opt ~ openContentAny.opt) gmap Generic[OpenContentElem]
+  lazy val openContent: Parser[OpenContentElem] = xsElem("openContent")(annotated ~ openContentModeAttr.some(OpenContentMode.Interleave) ~ openContentAny.opt) gmap Generic[OpenContentElem]
 
   lazy val openContentAny: Parser[OpenContentAnyElem] = xsElem("any")(annotated ~ anyAttrGroup) gmap Generic[OpenContentAnyElem]
 
-  lazy val openContentModeAttr: Parser[OpenContentModeToken] = strAttr("mode") >>= {
-    case "none" => success(OpenContentModeToken.None)
-    case "interleave" => success(OpenContentModeToken.Interleave)
-    case "suffix" => success(OpenContentModeToken.Suffix)
+  lazy val openContentModeAttr: Parser[OpenContentMode] = strAttr("mode") >>= {
+    case "none" => success(OpenContentMode.None)
+    case "interleave" => success(OpenContentMode.Interleave)
+    case "suffix" => success(OpenContentMode.Suffix)
     case s => fail(s"invalid open content mode: $s")
   }
 
@@ -236,7 +237,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val selector: Parser[SelectorElem] = xsElem("selector")(annotated ~ xPathAttr ~ xPathDefaultNamespaceAttr.opt) gmap Generic[SelectorElem]
 
-  lazy val sequence: Parser[SequenceElem] = xsElem("sequence")(annotated ~ nestedParticle.rep) gmap Generic[SequenceElem]
+  lazy val sequence: Parser[SequenceElem] = xsElem("sequence")(annotated ~ occurs ~nestedParticle.rep) gmap Generic[SequenceElem]
   
   lazy val simpleContent: Parser[SimpleContentElem] = xsElem("simpleContent")(annotated ~ (simpleContentRestriction | simpleContentExtension)) gmap Generic[SimpleContentElem]
 
@@ -264,7 +265,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val typeAttr = qnAttr("type")
 
-  lazy val typeDefParticle: Parser[TypeDefParticle] = groupRef | all | choice | sequence
+  lazy val typeDefParticle: Parser[TypeDefParticleCmp] = groupRef | all | choice | sequence
 
   lazy val union: Parser[UnionElem] = xsElem("union")(annotated ~ memberTypes.opt ~ simpleType.rep) gmap Generic[UnionElem]
 

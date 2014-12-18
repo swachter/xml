@@ -58,7 +58,8 @@ trait XmlPushParserMod extends PushParserMod {
     startedElements: List[QName],
     log: Messages,
     dataStack: List[StateData],
-    payload: Payload
+    payload: Payload,
+    lastLocation: Option[Location]
   ) {
     def updateData(stateData: StateData): XmlParserState = copy(dataStack = stateData :: dataStack.tail)
   }
@@ -69,7 +70,7 @@ trait XmlPushParserMod extends PushParserMod {
 
   case object NoStateData extends StateData
 
-  def initialState(initialPayload: Payload) = XmlParserState(List(Namespaces.initial), Nil, Nil, List(NoStateData), initialPayload)
+  def initialState(initialPayload: Payload) = XmlParserState(List(Namespaces.initial), Nil, Nil, List(NoStateData), initialPayload, None)
 
   //
 
@@ -86,7 +87,7 @@ trait XmlPushParserMod extends PushParserMod {
   val startDocument: Parser[Location] = Parser(state => {
     Await {
       case Some(e: StartDocumentEvent) =>
-        Done(e.location, state.copy(dataStack = NoStateData :: state.dataStack))
+        Done(e.location, state.copy(dataStack = NoStateData :: state.dataStack, lastLocation = Some(e.location)))
       case i => abort(state, s"can not start document - unexpected input: $i")
 
     }
@@ -98,7 +99,7 @@ trait XmlPushParserMod extends PushParserMod {
         if (name == e.name) {
           val ns = state.namespacesStack.head.nestedScope(e.newNamespaces) :: state.namespacesStack
           val es = e.name :: state.startedElements
-          Done(e.location, state.copy(namespacesStack = ns, startedElements = es, dataStack = StartedElementData(e.attrs, Set[QName]()) :: state.dataStack))
+          Done(e.location, state.copy(namespacesStack = ns, startedElements = es, dataStack = StartedElementData(e.attrs, Set[QName]()) :: state.dataStack, lastLocation = Some(e.location)))
         } else {
           abort(state, s"can not start element; names differ - name: $name; event.name: ${e.name}")
         }
@@ -109,7 +110,7 @@ trait XmlPushParserMod extends PushParserMod {
   val endDocument: Parser[Location] = Parser(state => {
     Await {
       case Some(e: EndDocumentEvent) =>
-        Done(e.location, state.copy(dataStack = state.dataStack.tail))
+        Done(e.location, state.copy(dataStack = state.dataStack.tail, lastLocation = Some(e.location)))
       case i => abort(state, s"can not end document - unexpected input: $i")
 
     }
@@ -123,7 +124,7 @@ trait XmlPushParserMod extends PushParserMod {
             if (e.name == state.startedElements.head) {
               val unprocessedAttrs = attrs.filter(t => !processed.contains(t._1))
               val resLog = if (unprocessedAttrs.isEmpty) state.log else s"unprocessed attributes: $unprocessedAttrs" :: state.log
-              Done((), state.copy(namespacesStack = state.namespacesStack.tail, startedElements = state.startedElements.tail, log = resLog, dataStack = state.dataStack.tail))
+              Done((), state.copy(namespacesStack = state.namespacesStack.tail, startedElements = state.startedElements.tail, log = resLog, dataStack = state.dataStack.tail, lastLocation = Some(e.location)))
             } else {
               abort(state, s"can not end element; names differ - event.name: ${e.name}; head: ${state.startedElements.head}")
             }

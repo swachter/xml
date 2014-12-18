@@ -84,7 +84,7 @@ sealed case class ComplexType(
   baseType: Type,
   derivation: CtDerivationCtrl,
   attrs: AttrsModel,
-  content: ContentModel,
+  content: ContentType,
   isAbstract: Boolean,
   finalSet: Set[CtDerivationCtrl],
   prohibitedSubstitutions: Set[CtBlockCtrl],

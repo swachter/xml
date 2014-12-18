@@ -1,7 +1,7 @@
 package eu.swdev.xml.xsd.instantiation
 
 import eu.swdev.xml.base.{DefaultValue, SomeValue}
-import eu.swdev.xml.log
+import eu.swdev.xml.{name, log}
 import eu.swdev.xml.log.{Message, Messages}
 import eu.swdev.xml.name._
 import eu.swdev.xml.schema.ComplexType
@@ -121,7 +121,7 @@ object JobMod {
 
   def abort[C](msg: String): Job[C] = Job[C] { state => Abort(addError(state, msg)) }
 
-  def await[A](name: QName)(implicit ev: SymbolSpace[A], ct: ClassTag[A]): Job[A] = {
+  def await[A](name: QName, stage: Stage = Completed)(implicit ev: SymbolSpace[A], ct: ClassTag[A]): Job[A] = {
     Job { state => {
 
       def doAwait(ref: Ref[A]) = Await[A, A](ref, {
@@ -136,7 +136,7 @@ object JobMod {
       })
 
       if (name.namespace == state.config.schemaTargetNamespace) {
-        doAwait(LocalRef(ev, name.localName, Completed))
+        doAwait(LocalRef(ev, name.localName, stage))
       } else if (name.namespace == XsdNamespace) {
         doAwait(GlobalRef(ev, name, None))
       } else {
@@ -163,18 +163,18 @@ object JobMod {
   def complexTypeJob(cmp: ComplexTypeElem): Job[ComplexType] = for {
     conf <- getConf
     typeName <- typeName(cmp.name)
-    baseType <- await[Type](cmp.content.base)
+    baseType <- await[Type](cmp.content.base, Created)
     attrs <- attrsModelJob(cmp.content)
     finl = cmp.finl.getOrElse(conf.schemaElem.finalDefault.value).toSet[CtDerivationCtrl]
     block = cmp.block.getOrElse(conf.schemaElem.blockDefault.value).toSet[CtBlockCtrl]
     assertions <- assertionsJob(cmp.content)
-    (contentModel, completeContentModelJob) <- contentModelJob(cmp.content)
+    (contentModel, completeContentModelJob) <- contentModelJob(cmp.content, baseType, cmp.mixed)
     ct = ComplexType(typeName, baseType, cmp.content.derivationMethod, attrs, contentModel, cmp.abstrct.value, finl, block, assertions)
     _ <- created(ct)
     _ <- completeContentModelJob
   } yield ct
 
-  def assertionsJob(content: ComplexTypeContent): Job[Seq[Assertion]] = {
+  def assertionsJob(content: ComplexTypeContentCmp): Job[Seq[Assertion]] = {
     val assertElems: Seq[AssertElem] = content match {
       case c: ComplexContentAbbrev => c.asserts
       case c: ComplexContentElem => c.derivation.asserts
@@ -195,18 +195,17 @@ object JobMod {
     Assertion(ae.test, xPathDefaultNamespace)
   }
 
-  def contentModelJob(content: ComplexTypeContent): Job[(ContentModel, Job[Unit])] = {
+  def contentModelJob(content: ComplexTypeContentCmp, baseType: Type, ctMixed: Option[Boolean]): Job[(ContentType, Job[Unit])] = {
     content match {
-      case c: ComplexContentAbbrev => ???
-      case c: ComplexContentElem => ???
+      case c: ComplexContentCmp => complexContentJob(c, baseType, ctMixed)
       case c: SimpleContentElem => for {
         simpleTypeDefinition <- simpleTypeDefinitionJob(c.derivation)
-      } yield (SimpleContentModel(simpleTypeDefinition), Job.unit(()))
+      } yield (SimpleContentType(simpleTypeDefinition), Job.unit(()))
     }
   }
 
-  // 3.4.2.2 determination of the simple type definition of the content type property
-  def simpleTypeDefinitionJob(derivation: SimpleDerivation): Job[SimpleType] = {
+  // 3.4.2.2 determine the simple type definition of the content type property
+  def simpleTypeDefinitionJob(derivation: SimpleDerivationCmp): Job[SimpleType] = {
     await[Type](derivation.base) >>= { baseType =>
       (baseType, derivation) match {
         // 1
@@ -238,7 +237,7 @@ object JobMod {
           Job.unit(bt.content.simpleTypeDefinition.get)
         }
         // 4
-        case (bt: SimpleType, d: SimpleContentExtensionElem) if (true) => {
+        case (bt: SimpleType, d: SimpleContentExtensionElem) => {
           Job.unit(bt)
         }
         // 5
@@ -249,11 +248,182 @@ object JobMod {
     }
   }
 
-  def attrsModelJob(cmp: ComplexTypeContent): Job[AttrsModel] = {
+  // 3.4.2.3.3
+  def complexContentJob(complexContent: ComplexContentCmp, baseType: Type, ctMixed: Option[Boolean]): Job[(ComplexContentType, Job[Unit])] = {
+    // 1
+    val effectiveMixed: Boolean = complexContent.mixed.orElse(ctMixed).getOrElse(false)
+    // 2
+    val explicitContent: Option[TypeDefParticleCmp] = complexContent.typeDefParticle.filter {
+      // 2.1.2
+      case p: AllElem if (p.particles.isEmpty) => false
+      case p: SequenceElem if (p.particles.isEmpty) => false
+      // 2.1.3
+      case p: ChoiceElem if (p.minOccurs.getOrElse(1) == 0 && p.particles.isEmpty) => false
+      // 2.1.4
+      case t: TypeDefParticleCmp if (t.maxOccurs.getOrElse(1) == 0) => false
+      case _ => true
+    }
+    // 3
+    val effectiveContent: Option[TypeDefParticleCmp] = explicitContent.orElse(if (effectiveMixed) {
+      // 3.1.1
+      Some(SequenceElem(complexContent.loc, None, None, Some(1), Some(MaxOccurs.Bounded(1)), Seq(), Map()))
+    } else {
+      // 3.1.2
+      None
+    })
+
+    //
+    def contentTypeBasedOnDerivedTypeOnly: (Job[ComplexContentType], Job[Unit]) = {
+      effectiveContent.fold {
+        // 4.1.1
+        (Job.unit[ComplexContentType](EmptyContentType), Job.unit(()))
+      } {
+        // 4.1.2
+        tdpc => {
+          val (gj, completionJob) = groupJob(tdpc)
+          (gj.map(ElementsContentType(_, effectiveMixed, None)), completionJob)
+        }
+      }
+    }
+
+    // 4
+    val (explicitContentTypeJob, completionJob) = complexContent.derivationMethod match {
+      // 4.1
+      case Relation.Restriction => contentTypeBasedOnDerivedTypeOnly
+
+      // 4.2
+      case Relation.Extension => baseType match {
+
+        // 4.2.1
+        case baseType: SimpleType => contentTypeBasedOnDerivedTypeOnly
+
+        case baseType: ComplexType => baseType.content match {
+
+          // 4.2.1
+          case EmptyContentType => contentTypeBasedOnDerivedTypeOnly
+          // 4.2.1
+          case baseContentType: SimpleContentType => contentTypeBasedOnDerivedTypeOnly
+          // 4.2.2
+          case baseContentType: ElementsContentType if (effectiveContent.isEmpty) => (Job.unit(baseContentType), Job.unit(()))
+            // 4.2.3
+          case baseContentType: ElementsContentType => {
+
+            val (particleJob, completionJob) = baseContentType.group match {
+              // 4.2.3.1
+              case baseParticle: AllGroupParticle if (explicitContent.isEmpty) => (Job.unit(baseParticle), Job.unit(()))
+              // 4.2.3.2 & 4.2.3.3
+              case baseParticle: AllGroupParticle if (explicitContent.isDefined) => {
+                val (gj, completionJob) = groupJob(effectiveContent.get)
+                (gj.map(_ match {
+                  // 4.2.3.2
+                  case groupParticle: AllGroupParticle => AllGroupParticle(Occurs(effectiveContent.get.minOccurs.getOrElse(1), MaxOccurs.one), baseParticle.nested ++ groupParticle.nested)
+                  // 4.2.3.3
+                  case groupParticle => SeqGroupParticle(Occurs(1, MaxOccurs.one), Seq(baseParticle, groupParticle))
+                }), completionJob)
+              }
+
+              // 4.2.3.3
+              case baseParticle => {
+                val (gj, completionJob) = groupJob(effectiveContent.get)
+                (gj.map(groupParticle => SeqGroupParticle(Occurs(1, MaxOccurs.one), Seq(baseParticle, groupParticle))), completionJob)
+              }
+
+            }
+
+            (particleJob.map(ElementsContentType(_, effectiveMixed, baseContentType.open)), completionJob)
+
+          }
+
+        }
+
+      }
+    }
+
+    // 5
+    val wildcardElementJob: Job[Option[OpenContent]] = for {
+      conf <- getConf
+    } yield {
+      complexContent.openContent.map(openContentElem => {
+        OpenContent(openContentElem.mode.value, openContentElem.any.fold {
+          // ???
+          OpenContentAny(NamespaceConstraint.Any, ProcessContents.Lax)
+        } {
+          oce => OpenContentAny(namespaceConstraint(oce, conf.schemaTargetNamespace), oce.processContents.value)
+        })
+      }).orElse(conf.schemaElem.defaultOpenContent.fold[Option[OpenContent]] {
+        // 5.3
+        None
+      } {
+        // 5.2.1 & 5.2.2
+        defOpenContent => if (explicitContent.isDefined || defOpenContent.appliesToEmpty.value) {
+          Some(OpenContent(defOpenContent.mode.value, OpenContentAny(namespaceConstraint(defOpenContent.any, conf.schemaTargetNamespace) , defOpenContent.any.processContents.value)))
+        } else {
+          // 5.3
+          None
+        }
+      })
+    }
+
+    // 6
+    Job.map2(explicitContentTypeJob, wildcardElementJob)((explicitContentType, optWildcardElement) => {
+      optWildcardElement.fold {
+        // 6.1
+        (explicitContentType, completionJob)
+      } {
+        wildcardElement => {
+          if (wildcardElement.mode == OpenContentMode.None) {
+            // 6.1
+            (explicitContentType, completionJob)
+          } else {
+            // 6.2
+            explicitContentType match {
+              case EmptyContentType => {
+                (ElementsContentType(SeqGroupParticle(Occurs(1, MaxOccurs.one), Seq()), false, Some(OpenContent(wildcardElement.mode, wildcardElement.any))), completionJob)
+              }
+              case elementsContentType: ElementsContentType => {
+                val openContentAny = elementsContentType.open.fold {
+                  wildcardElement.any
+                } {
+                  openContent => OpenContentAny(wildcardElement.any.namespaceConstraint.union(openContent.any.namespaceConstraint), wildcardElement.any.processContents)
+                }
+
+                val optOpenContent = Some(OpenContent(wildcardElement.mode, openContentAny))
+                (elementsContentType.copy(open = optOpenContent), completionJob)
+              }
+            }
+          }
+        }
+      }
+    })
+
+  }
+
+  // 3.10.2.2
+  def namespaceConstraint(wildcard: WildcardCmp, targetNamespace: Namespace): NamespaceConstraint = {
+    def namespaceSet(list: List[NamespaceItemToken]): Set[Namespace] = list.foldLeft(Set[Namespace]())((acc, tok) => acc + (tok match {
+      case NamespaceItemToken.TargetNamespace => targetNamespace
+      case NamespaceItemToken.Local => name.NoNamespace
+      case NamespaceItemToken.Uri(uri) => Namespace(uri)
+    }))
+    (wildcard.namespace, wildcard.notNamespace) match {
+      case (Some(NamespaceDefToken.Any), _) => NamespaceConstraint.Any
+      case (Some(NamespaceDefToken.Other), _) => NamespaceConstraint.Not(Set(NoNamespace, targetNamespace))
+      case (Some(NamespaceDefToken.Items(list)), _) => NamespaceConstraint.Enum(namespaceSet(list))
+      case (_, Some(list)) => NamespaceConstraint.Not(namespaceSet(list))
+      case _ => NamespaceConstraint.Any
+    }
+
+  }
+
+  def groupJob(particleCmp: TypeDefParticleCmp): (Job[GroupParticle], Job[Unit]) = {
+    ???
+  }
+
+  def attrsModelJob(cmp: ComplexTypeContentCmp): Job[AttrsModel] = {
     val (attrs, anyAttribute) = cmp match {
-      case _: SimpleContentModel => (Nil, None)
+      case _: SimpleContentType => (Nil, None)
       case m: ComplexContentAbbrev => (m.attrs, m.anyAttribute)
-      case m: ComplexDerivation => (m.attrs, m.anyAttribute)
+      case m: ComplexDerivationCmp => (m.attrs, m.anyAttribute)
     }
     attrsModelJob(attrs, anyAttribute) 
   }
@@ -346,16 +516,16 @@ object JobMod {
     } yield UnionType(typeName, anySimpleType, Facets.empty[SimpleVal], memberTypes._1 ++ memberTypes._2)
   }
 
-  def simpleTypeRestriction(typeName: QName, simpleType: SimpleType, facetSpecs: Seq[FacetSpec]): Job[SimpleType] = {
+  def simpleTypeRestriction(typeName: QName, simpleType: SimpleType, facetSpecs: Seq[FacetCmp]): Job[SimpleType] = {
 
     // a function that either restricts a set of facets or returns an error
     type FacetsRestriction[X <: SimpleVal] = Facets[X] => Either[String, Facets[X]]
 
     // a partial function that transforms a FacetSpec into a FacetsRestriction
-    type FacetHandler[X <: SimpleVal] = PartialFunction[FacetSpec, FacetsRestriction[X]]
+    type FacetHandler[X <: SimpleVal] = PartialFunction[FacetCmp, FacetsRestriction[X]]
 
     // a function that transforms a FacetSpec into a FacetsRestriction or an error
-    type FacetCompiler[X <: SimpleVal] = FacetSpec => Either[String, FacetsRestriction[X]]
+    type FacetCompiler[X <: SimpleVal] = FacetCmp => Either[String, FacetsRestriction[X]]
 
     // joins a sequence of FacetHandlers into FacetCompiler
     def facetCompiler[X <: SimpleVal](pfs: FacetHandler[X]*): FacetCompiler[X] = {
@@ -366,7 +536,7 @@ object JobMod {
     def go[VAL <: SimpleVal](
       compiler: FacetCompiler[VAL],
       facets: Facets[VAL],
-      specs: Seq[FacetSpec])
+      specs: Seq[FacetCmp])
     : Job[Facets[VAL]] = specs match {
       case head :: tail => compiler(head) match {
         case Left(left) => abort(left)
@@ -378,7 +548,7 @@ object JobMod {
       case _ => Job.unit(facets)
     }
 
-    def restrict[T <: SimpleType](bt: T)(create: (QName, T, Facets[bt.VAL]) => T)(handlers: PartialFunction[FacetSpec, Facets[bt.VAL] => Either[String, Facets[bt.VAL]]]*): Job[T] = for {
+    def restrict[T <: SimpleType](bt: T)(create: (QName, T, Facets[bt.VAL]) => T)(handlers: PartialFunction[FacetCmp, Facets[bt.VAL] => Either[String, Facets[bt.VAL]]]*): Job[T] = for {
       fs <- go(facetCompiler(handlers: _*), bt.facets, facetSpecs)
     } yield create(typeName, bt, fs)
 
@@ -415,7 +585,7 @@ object JobMod {
       case f: MaxLengthElem => facets => facets.maxLength.checkAndSet(f.value)
     }
 
-    def orderHandler(baseType: SimpleType)(implicit ev: Ordering[baseType.VAL]): PartialFunction[FacetSpec, Facets[baseType.VAL] => Either[String, Facets[baseType.VAL]]] = {
+    def orderHandler(baseType: SimpleType)(implicit ev: Ordering[baseType.VAL]): PartialFunction[FacetCmp, Facets[baseType.VAL] => Either[String, Facets[baseType.VAL]]] = {
       case f: MinInclusiveElem => facets => baseType.createVal(f.value, f.namespaces).right.flatMap(v => facets.minInc.checkAndSet(v))
       case f: MinExclusiveElem => facets => baseType.createVal(f.value, f.namespaces).right.flatMap(v => facets.minExc.checkAndSet(v))
       case f: MaxInclusiveElem => facets => baseType.createVal(f.value, f.namespaces).right.flatMap(v => facets.maxInc.checkAndSet(v))

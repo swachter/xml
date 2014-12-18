@@ -44,14 +44,56 @@ object Form {
   object Unqualified extends Form
 }
 
-sealed trait MaxOccurs
+case class Occurs(min: Int, max: MaxOccurs)
 
-object MaxOccurs {
-  case object Unbounded extends MaxOccurs
-  case class Bounded(max: Int) extends MaxOccurs
+sealed trait MaxOccurs {
+  def isUnbounded: Boolean
+
+  def +(that: MaxOccurs): MaxOccurs = (this, that) match {
+    case (MaxOccurs.Bounded(m1), MaxOccurs.Bounded(m2)) => MaxOccurs.Bounded(m1 + m2)
+    case _ => MaxOccurs.Unbounded
+  }
+
+  def *(that: MaxOccurs): MaxOccurs = (this, that) match {
+    case (MaxOccurs.Bounded(m1), MaxOccurs.Bounded(m2)) => MaxOccurs.Bounded(m1 * m2)
+    case (MaxOccurs.Bounded(0), _) => MaxOccurs.Bounded(0)
+    case (_, MaxOccurs.Bounded(0)) => MaxOccurs.Bounded(0)
+    case _ => MaxOccurs.Unbounded
+  }
+
+  def max(that: MaxOccurs): MaxOccurs = (this, that) match {
+    case (MaxOccurs.Bounded(m1), MaxOccurs.Bounded(m2)) => MaxOccurs.Bounded(m1 max m2)
+    case _ => MaxOccurs.Unbounded
+  }
+
 }
 
-sealed trait NamespaceConstraint 
+object MaxOccurs {
+  val zero: MaxOccurs = MaxOccurs.Bounded(0)
+  val one: MaxOccurs = MaxOccurs.Bounded(1)
+  case object Unbounded extends MaxOccurs {
+    def isUnbounded = true
+  }
+  case class Bounded(max: Int) extends MaxOccurs {
+    def isUnbounded = false
+  }
+}
+
+sealed trait NamespaceConstraint {
+  // 3.10.6.3
+  def union(that: NamespaceConstraint): NamespaceConstraint = {
+    (this, that) match {
+      case (NamespaceConstraint.Any, _) => NamespaceConstraint.Any
+      case (_, NamespaceConstraint.Any) => NamespaceConstraint.Any
+      case (NamespaceConstraint.Enum(set1), NamespaceConstraint.Enum(set2)) => NamespaceConstraint.Enum(set1 ++ set2)
+      case (NamespaceConstraint.Enum(set1), NamespaceConstraint.Not(set2)) => anyOrNot(set2 -- set1)
+      case (NamespaceConstraint.Not(set1), NamespaceConstraint.Enum(set2)) => anyOrNot(set1 -- set2)
+      case (NamespaceConstraint.Not(set1), NamespaceConstraint.Not(set2)) => anyOrNot(set1 intersect set2)
+    }
+  }
+
+  private def anyOrNot(set: Set[Namespace]): NamespaceConstraint = if (set.isEmpty) NamespaceConstraint.Any else NamespaceConstraint.Not(set)
+}
 
 object NamespaceConstraint {
 
@@ -63,9 +105,12 @@ object NamespaceConstraint {
 
 sealed trait OpenContentMode
 
+sealed trait DefaultOpenContentMode extends OpenContentMode
+
 object OpenContentMode {
-  object Interleave extends OpenContentMode
-  object Suffix extends OpenContentMode
+  object None extends OpenContentMode
+  object Interleave extends DefaultOpenContentMode
+  object Suffix extends DefaultOpenContentMode
 }
 
 case class OpenContent(mode: OpenContentMode, any: OpenContentAny)

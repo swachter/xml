@@ -32,15 +32,15 @@ sealed trait SimpleDerivationGroupElem
 
 //
 
-sealed trait FacetSpec
+sealed trait FacetCmp
 
 trait HasFacetSpecs {
 
   def facets: Seq[FacetElem]
 
-  def facetSpecs: Seq[FacetSpec] = {
-    val (fss, ees, pes) = facets.foldRight((List[FacetSpec](), List[EnumerationElem](), List[PatternElem]()))((i, acc) => i match {
-      case fs: FacetSpec => (fs :: acc._1, acc._2, acc._3)
+  def facetSpecs: Seq[FacetCmp] = {
+    val (fss, ees, pes) = facets.foldRight((List[FacetCmp](), List[EnumerationElem](), List[PatternElem]()))((i, acc) => i match {
+      case fs: FacetCmp => (fs :: acc._1, acc._2, acc._3)
       case ee: EnumerationElem => (acc._1, ee :: acc._2, acc._3)
       case pe: PatternElem => (acc._1, acc._2, pe :: acc._3)
     })
@@ -51,50 +51,65 @@ trait HasFacetSpecs {
 
 //
 
-sealed trait Particle
+sealed trait ParticleCmp
 
-sealed trait NestedParticle extends Particle
+sealed trait NestedParticleCmp extends ParticleCmp
 
-sealed trait InGroupDefParticle extends Particle
+sealed trait InGroupDefParticleCmp extends ParticleCmp
 
-sealed trait TypeDefParticle extends Particle
+sealed trait TypeDefParticleCmp extends ParticleCmp {
+  def minOccurs: Option[Int]
+  def maxOccurs: Option[MaxOccurs]
+}
 
 //
 
-sealed trait ComplexDerivation {
+sealed trait ComplexDerivationCmp {
   def base: QName
   def attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]]
   def anyAttribute: Option[AnyAttributeElem]
   def derivationMethod: CtDerivationCtrl
   def asserts: Seq[AssertElem]
+  def typeDefParticle: Option[TypeDefParticleCmp]
+  def openContent: Option[OpenContentElem]
 }
 
-sealed trait SimpleDerivation {
+sealed trait SimpleDerivationCmp {
   def base: QName
   def derivationMethod: CtDerivationCtrl
   def asserts: Seq[AssertElem]
 }
 
-sealed trait ComplexTypeContent {
+sealed trait ComplexTypeContentCmp {
   def base: QName
   def derivationMethod: CtDerivationCtrl
 }
 
-sealed trait ComplexContent extends ComplexTypeContent
+sealed trait ComplexContentCmp extends ComplexTypeContentCmp {
+  def loc: Location
+  def mixed: Option[Boolean]
+  def typeDefParticle: Option[TypeDefParticleCmp]
+  def openContent: Option[OpenContentElem]
+}
+
+trait WildcardCmp {
+  def namespace: Option[NamespaceDefToken]
+  def notNamespace: Option[List[NamespaceItemToken]]
+}
 
 //
 //
 //
 
-case class AllElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], particles: Seq[NestedParticle], openAttrs: Map[QName, String]) extends InGroupDefParticle with TypeDefParticle
+case class AllElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], minOccurs: Option[Int], maxOccurs: Option[MaxOccurs], particles: Seq[NestedParticleCmp], openAttrs: Map[QName, String]) extends InGroupDefParticleCmp with TypeDefParticleCmp
 
 case class AlternativeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: Option[String], refType: Option[QName], xPathDefaultNamespace: Option[XPathDefaultNamespace], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], openAttrs: Map[QName, String])
 
 case class AnnotationElem(loc: Location, id: Option[String], seq: Seq[Either[AppInfoElem, DocumentationElem]], openAttrs: Map[QName, String])
 
-case class AnyAttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], notQName: Option[List[QNameItemA]], openAttrs: Map[QName, String]) extends NestedParticle
+case class AnyAttributeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], notQName: Option[List[QNameItemA]], openAttrs: Map[QName, String]) extends NestedParticleCmp with WildcardCmp
 
-case class AnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], notQName: Option[List[QNameItem]], minOccurs: Option[Int], maxOccurs: Option[MaxOccurs], openAttrs: Map[QName, String]) extends NestedParticle
+case class AnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], notQName: Option[List[QNameItem]], minOccurs: Option[Int], maxOccurs: Option[MaxOccurs], openAttrs: Map[QName, String]) extends NestedParticleCmp with WildcardCmp
 
 case class AppInfoElem(loc: Location, source: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
@@ -115,41 +130,44 @@ case class AttributeElemL(loc: Location, id: Option[String], annotation: Option[
 
 case class AttributeGroupDefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
-case class AttributeGroupRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], ref: QName, openAttrs: Map[QName, String]) extends NestedParticle
+case class AttributeGroupRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], ref: QName, openAttrs: Map[QName, String]) extends NestedParticleCmp
 
-case class ChoiceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], particles: Seq[NestedParticle], openAttrs: Map[QName, String]) extends NestedParticle with InGroupDefParticle with TypeDefParticle
+case class ChoiceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], minOccurs: Option[Int], maxOccurs: Option[MaxOccurs], particles: Seq[NestedParticleCmp], openAttrs: Map[QName, String]) extends NestedParticleCmp with InGroupDefParticleCmp with TypeDefParticleCmp
 
-case class ComplexContentAbbrev(openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem]) extends ComplexContent {
+case class ComplexContentAbbrev(loc: Location, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticleCmp], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem]) extends ComplexContentCmp {
   override def base: QName = XsNames.ANY_TYPE
   override def derivationMethod = Relation.Restriction
+  override def mixed: Option[Boolean] = None
 }
 
-case class ComplexContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mixed: Option[Boolean], derivation: ComplexDerivation, openAttrs: Map[QName, String]) extends ComplexContent {
+case class ComplexContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mixed: Option[Boolean], derivation: ComplexDerivationCmp, openAttrs: Map[QName, String]) extends ComplexContentCmp {
   override def base: QName = derivation.base
   override def derivationMethod = derivation.derivationMethod
+  override def typeDefParticle: Option[TypeDefParticleCmp] = derivation.typeDefParticle
+  override def openContent: Option[OpenContentElem] = derivation.openContent
 }
 
-case class ComplexExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivation {
+case class ComplexExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticleCmp], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivationCmp {
   override def derivationMethod = Relation.Extension
 }
 
-case class ComplexRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticle], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivation {
+case class ComplexRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticleCmp], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends ComplexDerivationCmp {
   override def derivationMethod = Relation.Restriction
 }
 
-case class ComplexTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: SomeValue[String], mixed: Option[Boolean], abstrct: SomeValue[Boolean], finl: Option[RelationSet[CtDerivationCtrl]], block: Option[RelationSet[CtBlockCtrl]], defaultAttributesApply: Option[Boolean], content: ComplexTypeContent, openAttrs: Map[QName, String]) extends RedefinableGroupElem
+case class ComplexTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: SomeValue[String], mixed: Option[Boolean], abstrct: SomeValue[Boolean], finl: Option[RelationSet[CtDerivationCtrl]], block: Option[RelationSet[CtBlockCtrl]], defaultAttributesApply: Option[Boolean], content: ComplexTypeContentCmp, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
-case class DefaultOpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], appliesToEmpty: Option[Boolean], mode: Option[DefaultOpenContentModeToken], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
+case class DefaultOpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], appliesToEmpty: SomeValue[Boolean], mode: SomeValue[DefaultOpenContentMode], any: OpenContentAnyElem, openAttrs: Map[QName, String])
 
 case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
-case class ElementElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], subsitutionGroup: Option[List[QName]], minOccurs: Option[Int], maxOccurs: Option[MaxOccurs], default: Option[String], fixed: Option[String], nillable: Option[Boolean], abstr: Option[Boolean], finl: Option[RelationSet[ElemFinalCtrl]], block: Option[RelationSet[ElemBlockCtrl]], form: Option[Form], targetNamespace: Option[URI], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], alternatives: Seq[AlternativeElem], constraints: Seq[IdentityConstraintGroupElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem with NestedParticle
+case class ElementElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], subsitutionGroup: Option[List[QName]], minOccurs: Option[Int], maxOccurs: Option[MaxOccurs], default: Option[String], fixed: Option[String], nillable: Option[Boolean], abstr: Option[Boolean], finl: Option[RelationSet[ElemFinalCtrl]], block: Option[RelationSet[ElemBlockCtrl]], form: Option[Form], targetNamespace: Option[URI], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], alternatives: Seq[AlternativeElem], constraints: Seq[IdentityConstraintGroupElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem with NestedParticleCmp
 
 case class FieldElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[XPathDefaultNamespace], openAttrs: Map[QName, String])
 
-case class GroupDefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, particle: InGroupDefParticle, openAttrs: Map[QName, String]) extends RedefinableGroupElem
+case class GroupDefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, particle: InGroupDefParticleCmp, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
-case class GroupRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], ref: QName, openAttrs: Map[QName, String]) extends NestedParticle with TypeDefParticle
+case class GroupRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], ref: QName, minOccurs: Option[Int], maxOccurs: Option[MaxOccurs], openAttrs: Map[QName, String]) extends NestedParticleCmp with TypeDefParticleCmp
 
 case class ImportElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: Option[String], namespace: Option[String], openAttrs: Map[QName, String]) extends CompositionGroupElem
 
@@ -163,9 +181,9 @@ case class ListElem(loc: Location, id: Option[String], annotation: Option[Annota
 
 case class NotationElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, publ: Option[String], system: Option[URI], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
 
-case class OpenContentAnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], openAttrs: Map[QName, String])
+case class OpenContentAnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], openAttrs: Map[QName, String]) extends WildcardCmp
 
-case class OpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mode: Option[OpenContentModeToken], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
+case class OpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mode: SomeValue[OpenContentMode], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
 
 case class OverrideElem(loc: Location, id: Option[String], schemaLocation: String, overrides: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
 
@@ -175,18 +193,18 @@ case class SchemaElem(loc: Location, id: Option[String], targetNamespace: Option
 
 case class SelectorElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[XPathDefaultNamespace], openAttrs: Map[QName, String])
 
-case class SequenceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], particles: Seq[NestedParticle], openAttrs: Map[QName, String]) extends NestedParticle with InGroupDefParticle with TypeDefParticle
+case class SequenceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], minOccurs: Option[Int], maxOccurs: Option[MaxOccurs], particles: Seq[NestedParticleCmp], openAttrs: Map[QName, String]) extends NestedParticleCmp with InGroupDefParticleCmp with TypeDefParticleCmp
 
-case class SimpleContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], derivation: SimpleDerivation, openAttrs: Map[QName, String]) extends ComplexTypeContent {
+case class SimpleContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], derivation: SimpleDerivationCmp, openAttrs: Map[QName, String]) extends ComplexTypeContentCmp {
   override def base: QName = derivation.base
   def derivationMethod: CtDerivationCtrl = derivation.derivationMethod
 }
 
-case class SimpleContentExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivation {
+case class SimpleContentExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivationCmp {
   override def derivationMethod = Relation.Extension
 }
 
-case class SimpleContentRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, simpleType: Option[SimpleTypeElem], facets: Seq[FacetElem], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], syntheticTypeName: String, openAttrs: Map[QName, String]) extends SimpleDerivation with HasFacetSpecs {
+case class SimpleContentRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, simpleType: Option[SimpleTypeElem], facets: Seq[FacetElem], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], syntheticTypeName: String, openAttrs: Map[QName, String]) extends SimpleDerivationCmp with HasFacetSpecs {
   override def derivationMethod = Relation.Restriction
 }
 
@@ -200,37 +218,37 @@ case class UnionElem(loc: Location, id: Option[String], annotation: Option[Annot
 
 //
 
-case class AssertElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: String, xPathDefaultNamespace: Option[XPathDefaultNamespace], namespaces: Namespaces, openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class AssertElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], test: String, xPathDefaultNamespace: Option[XPathDefaultNamespace], namespaces: Namespaces, openAttrs: Map[QName, String]) extends FacetElem with FacetCmp
 
-case class ExplicitTimeZoneElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: ExplicitTimeZone, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class ExplicitTimeZoneElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: ExplicitTimeZone, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetCmp
 
 case class EnumerationElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem
 
-case class FractionDigitsElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class FractionDigitsElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetCmp
 
-case class LengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class LengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetCmp
 
-case class MaxExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetSpec
+case class MaxExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetCmp
 
-case class MaxInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetSpec
+case class MaxInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetCmp
 
-case class MaxLengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class MaxLengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetCmp
 
-case class MinExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetSpec
+case class MinExclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetCmp
 
-case class MinInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetSpec
+case class MinInclusiveElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, fixed: Option[Boolean], openAttrs: Map[QName, String], namespaces: Namespaces) extends FacetElem with FacetCmp
 
-case class MinLengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class MinLengthElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetCmp
 
 case class PatternElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: String, openAttrs: Map[QName, String]) extends FacetElem
 
-case class TotalDigitsElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class TotalDigitsElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: Int, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetCmp
 
-case class WhitespaceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: WhitespaceProcessing, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetSpec
+case class WhitespaceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], value: WhitespaceProcessing, fixed: Option[Boolean], openAttrs: Map[QName, String]) extends FacetElem with FacetCmp
 
-case class EnumerationsFacetSpec(value: Seq[EnumerationElem]) extends FacetSpec
+case class EnumerationsFacetSpec(value: Seq[EnumerationElem]) extends FacetCmp
 
-case class PatternsFacetSpec(value: Seq[PatternElem]) extends FacetSpec
+case class PatternsFacetSpec(value: Seq[PatternElem]) extends FacetCmp
 
 //
 
@@ -239,7 +257,7 @@ sealed trait NamespaceDefToken
 object NamespaceDefToken {
   object Any extends NamespaceDefToken
   object Other extends NamespaceDefToken
-  sealed case class Items(list: List[NamespaceItemToken ]) extends NamespaceDefToken
+  sealed case class Items(list: List[NamespaceItemToken]) extends NamespaceDefToken
 }
 
 sealed trait NamespaceItemToken
@@ -248,15 +266,6 @@ object NamespaceItemToken {
   object TargetNamespace extends NamespaceItemToken
   object Local extends NamespaceItemToken
   sealed case class Uri(uri: URI) extends NamespaceItemToken
-}
-
-sealed trait OpenContentModeToken
-sealed trait DefaultOpenContentModeToken extends OpenContentModeToken
-
-object OpenContentModeToken {
-  object None extends OpenContentModeToken
-  object Interleave extends DefaultOpenContentModeToken
-  object Suffix extends DefaultOpenContentModeToken
 }
 
 sealed trait RelationSet[+R <: Relation]
@@ -270,8 +279,7 @@ object RelationSet {
   sealed case class Items[R <: Relation](list: List[R]) extends RelationSet[R]
 
   implicit class RelationSetOps[R <: Relation](rs: RelationSet[R]) {
-    // require that the S type is not derived as being Nothing. This happens if
-    // no type annotation is given at the call site.
+    // require that type S is not inferred as being Nothing. This happens if
     def toSet[S <: R : ClassTag : NotNothing]: Set[S] = (rs match {
       case All => Relation.all
       case Items(list) => list
