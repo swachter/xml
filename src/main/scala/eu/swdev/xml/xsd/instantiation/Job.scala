@@ -339,63 +339,52 @@ object JobMod {
       }
     }
 
-    // 5
-    val wildcardElementJob: Job[Option[OpenContent]] = for {
-      conf <- getConf
-    } yield {
-      complexContent.openContent.map(openContentElem => {
-        OpenContent(openContentElem.mode.value, openContentElem.any.fold {
-          // ???
-          OpenContentAny(NamespaceConstraint.Any, ProcessContents.Lax)
+    val contentTypeJob: Job[ComplexContentType] = explicitContentTypeJob >>= {
+      explicitContentType => for {
+        conf <- getConf
+      } yield {
+        // 5
+        val optWildcardElement: Option[OpenContentCmp] = complexContent.openContent.orElse(conf.schemaElem.defaultOpenContent.filter(doc => {
+          !explicitContentType.isEmpty || doc.appliesToEmpty.value
+        }))
+        optWildcardElement.fold {
+          // 6.1
+          explicitContentType
         } {
-          oce => OpenContentAny(namespaceConstraint(oce, conf.schemaTargetNamespace), oce.processContents.value)
-        })
-      }).orElse(conf.schemaElem.defaultOpenContent.fold[Option[OpenContent]] {
-        // 5.3
-        None
-      } {
-        // 5.2.1 & 5.2.2
-        defOpenContent => if (explicitContent.isDefined || defOpenContent.appliesToEmpty.value) {
-          Some(OpenContent(defOpenContent.mode.value, OpenContentAny(namespaceConstraint(defOpenContent.any, conf.schemaTargetNamespace) , defOpenContent.any.processContents.value)))
-        } else {
-          // 5.3
-          None
-        }
-      })
-    }
-
-    // 6
-    Job.map2(explicitContentTypeJob, wildcardElementJob)((explicitContentType, optWildcardElement) => {
-      optWildcardElement.fold {
-        // 6.1
-        (explicitContentType, completionJob)
-      } {
-        wildcardElement => {
-          if (wildcardElement.mode == OpenContentMode.None) {
-            // 6.1
-            (explicitContentType, completionJob)
-          } else {
-            // 6.2
-            explicitContentType match {
-              case EmptyContentType => {
-                (ElementsContentType(SeqGroupParticle(Occurs(1, MaxOccurs.one), Seq()), false, Some(OpenContent(wildcardElement.mode, wildcardElement.any))), completionJob)
+          wildcardElement => {
+            if (wildcardElement.mode.value == OpenContentMode.None) {
+              // 6.1
+              explicitContentType
+            } else {
+              // 6.2
+              val w: OpenContentAny = wildcardElement.optAny.fold {
+                // there is no <any> element inside openContent
+                // -> use an OpenContentAny that corresponds to an empty <any> element
+                OpenContentAny(NamespaceConstraint.Any, ProcessContents.Strict)
+              } {
+                any => OpenContentAny(namespaceConstraint(any, conf.schemaTargetNamespace), any.processContents.value)
               }
-              case elementsContentType: ElementsContentType => {
-                val openContentAny = elementsContentType.open.fold {
-                  wildcardElement.any
-                } {
-                  openContent => OpenContentAny(wildcardElement.any.namespaceConstraint.union(openContent.any.namespaceConstraint), wildcardElement.any.processContents)
+              explicitContentType match {
+                case EmptyContentType => {
+                  val openContent = OpenContent(wildcardElement.mode.value, w)
+                  ElementsContentType(SeqGroupParticle(Occurs(1, MaxOccurs.one), Seq()), false, Some(openContent))
                 }
-
-                val optOpenContent = Some(OpenContent(wildcardElement.mode, openContentAny))
-                (elementsContentType.copy(open = optOpenContent), completionJob)
+                case explicitContentType: ElementsContentType => {
+                  val openContent = explicitContentType.open.fold {
+                    OpenContent(wildcardElement.mode.value, w)
+                  } {
+                    openContent => OpenContent(wildcardElement.mode.value, OpenContentAny(openContent.any.namespaceConstraint.union(w.namespaceConstraint), w.processContents))
+                  }
+                  explicitContentType.copy(open = Some(openContent))
+                }
               }
             }
           }
         }
       }
-    })
+    }
 
+    contentTypeJob.map((_, completionJob))
   }
 
   // 3.10.2.2

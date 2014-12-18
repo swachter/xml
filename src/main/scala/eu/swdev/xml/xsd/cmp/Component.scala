@@ -92,9 +92,15 @@ sealed trait ComplexContentCmp extends ComplexTypeContentCmp {
   def openContent: Option[OpenContentElem]
 }
 
+trait OpenContentCmp {
+  def mode: SomeValue[OpenContentMode]
+  def optAny: Option[OpenContentAnyElem]
+}
+
 trait WildcardCmp {
   def namespace: Option[NamespaceDefToken]
   def notNamespace: Option[List[NamespaceItemToken]]
+  def processContents: SomeValue[ProcessContents]
 }
 
 //
@@ -157,7 +163,9 @@ case class ComplexRestrictionElem(loc: Location, id: Option[String], annotation:
 
 case class ComplexTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: SomeValue[String], mixed: Option[Boolean], abstrct: SomeValue[Boolean], finl: Option[RelationSet[CtDerivationCtrl]], block: Option[RelationSet[CtBlockCtrl]], defaultAttributesApply: Option[Boolean], content: ComplexTypeContentCmp, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
-case class DefaultOpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], appliesToEmpty: SomeValue[Boolean], mode: SomeValue[DefaultOpenContentMode], any: OpenContentAnyElem, openAttrs: Map[QName, String])
+case class DefaultOpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], appliesToEmpty: SomeValue[Boolean], mode: SomeValue[DefaultOpenContentMode], any: OpenContentAnyElem, openAttrs: Map[QName, String]) extends OpenContentCmp {
+  override def optAny = Some(any)
+}
 
 case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
@@ -183,7 +191,7 @@ case class NotationElem(loc: Location, id: Option[String], annotation: Option[An
 
 case class OpenContentAnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], openAttrs: Map[QName, String]) extends WildcardCmp
 
-case class OpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mode: SomeValue[OpenContentMode], any: Option[OpenContentAnyElem], openAttrs: Map[QName, String])
+case class OpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mode: SomeValue[OpenContentMode], optAny: Option[OpenContentAnyElem], openAttrs: Map[QName, String]) extends OpenContentCmp
 
 case class OverrideElem(loc: Location, id: Option[String], schemaLocation: String, overrides: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
 
