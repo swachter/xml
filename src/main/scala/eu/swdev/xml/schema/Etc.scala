@@ -23,9 +23,9 @@ object Relation {
   val all = Seq(Extension, Restriction, Substitution, List, Union)
 }
 
-case class DisallowedNames(qNames: Set[QName], defined: Boolean, sibling: Boolean) {
+case class DisallowedNames(names: Set[QName], defined: Boolean, sibling: Boolean) {
   def ++(that: DisallowedNames): DisallowedNames = {
-    DisallowedNames(qNames ++ that.qNames, defined || that.defined, sibling || that.sibling)
+    DisallowedNames(names ++ that.names, defined || that.defined, sibling || that.sibling)
   }
 }
 
@@ -84,38 +84,72 @@ object MaxOccurs {
 }
 
 sealed trait NamespaceConstraint {
+
+  def disallowedNames: DisallowedNames
+
+  // 3.10.4.2
+  def isAllowed(name: QName): Boolean = {
+    isAllowed(name.namespace) && !disallowedNames.names.contains(name)
+  }
+
+  // 3.10.4.3
+  def isAllowed(namespace: Namespace): Boolean
+
   // 3.10.6.3
   def union(that: NamespaceConstraint): NamespaceConstraint = {
+    val newDisallowedNames = DisallowedNames(
+      disallowedNames.names.filter(!that.isAllowed(_)) ++ that.disallowedNames.names.filter(!this.isAllowed(_)),
+      disallowedNames.defined && that.disallowedNames.defined,
+      disallowedNames.sibling && that.disallowedNames.sibling
+    )
     (this, that) match {
-      case (NamespaceConstraint.Any, _) => NamespaceConstraint.Any
-      case (_, NamespaceConstraint.Any) => NamespaceConstraint.Any
-      case (NamespaceConstraint.Enum(set1), NamespaceConstraint.Enum(set2)) => NamespaceConstraint.Enum(set1 ++ set2)
-      case (NamespaceConstraint.Enum(set1), NamespaceConstraint.Not(set2)) => anyOrNot(set2 -- set1)
-      case (NamespaceConstraint.Not(set1), NamespaceConstraint.Enum(set2)) => anyOrNot(set1 -- set2)
-      case (NamespaceConstraint.Not(set1), NamespaceConstraint.Not(set2)) => anyOrNot(set1 intersect set2)
+      case (NamespaceConstraint.Any(_), _) => NamespaceConstraint.Any(newDisallowedNames)
+      case (_, NamespaceConstraint.Any(_)) => NamespaceConstraint.Any(newDisallowedNames)
+      case (NamespaceConstraint.Enum(_, set1), NamespaceConstraint.Enum(_, set2)) => NamespaceConstraint.Enum(newDisallowedNames, set1 ++ set2)
+      case (NamespaceConstraint.Enum(_, set1), NamespaceConstraint.Not(_, set2)) => anyOrNot(newDisallowedNames, set2 -- set1)
+      case (NamespaceConstraint.Not(_, set1), NamespaceConstraint.Enum(_, set2)) => anyOrNot(newDisallowedNames, set1 -- set2)
+      case (NamespaceConstraint.Not(_, set1), NamespaceConstraint.Not(_, set2)) => anyOrNot(newDisallowedNames, set1 intersect set2)
     }
   }
 
   // 3.10.6.4
   def intersect(that: NamespaceConstraint): NamespaceConstraint = {
+    val newDisallowedNames = DisallowedNames(
+      disallowedNames.names.filter(that.isAllowed(_)) ++ that.disallowedNames.names.filter(this.isAllowed(_)),
+      disallowedNames.defined || that.disallowedNames.defined,
+      disallowedNames.sibling || that.disallowedNames.sibling
+    )
     (this, that) match {
-      case (NamespaceConstraint.Any, _) => that
-      case (_, NamespaceConstraint.Any) => this
-      case (NamespaceConstraint.Enum(set1), NamespaceConstraint.Enum(set2)) => NamespaceConstraint.Enum(set1 intersect set2)
-      case (NamespaceConstraint.Enum(set1), NamespaceConstraint.Not(set2)) => NamespaceConstraint.Enum(set1 -- set2)
-      case (NamespaceConstraint.Not(set1), NamespaceConstraint.Enum(set2)) => NamespaceConstraint.Enum(set2 -- set1)
-      case (NamespaceConstraint.Not(set1), NamespaceConstraint.Not(set2)) => anyOrNot(set1 ++ set2)
+      case (NamespaceConstraint.Any(_), _) => that.withDisallowedNames(newDisallowedNames)
+      case (_, NamespaceConstraint.Any(_)) => this.withDisallowedNames(newDisallowedNames)
+      case (NamespaceConstraint.Enum(_, set1), NamespaceConstraint.Enum(_, set2)) => NamespaceConstraint.Enum(newDisallowedNames, set1 intersect set2)
+      case (NamespaceConstraint.Enum(_, set1), NamespaceConstraint.Not(_, set2)) => NamespaceConstraint.Enum(newDisallowedNames, set1 -- set2)
+      case (NamespaceConstraint.Not(_, set1), NamespaceConstraint.Enum(_, set2)) => NamespaceConstraint.Enum(newDisallowedNames, set2 -- set1)
+      case (NamespaceConstraint.Not(_, set1), NamespaceConstraint.Not(_, set2)) => anyOrNot(newDisallowedNames, set1 ++ set2)
     }
   }
 
-  private def anyOrNot(set: Set[Namespace]): NamespaceConstraint = if (set.isEmpty) NamespaceConstraint.Any else NamespaceConstraint.Not(set)
+  def withDisallowedNames(disallowedNames: DisallowedNames): NamespaceConstraint
+
+  private def anyOrNot(disallowedNames: DisallowedNames, set: Set[Namespace]): NamespaceConstraint =
+    if (set.isEmpty) NamespaceConstraint.Any(disallowedNames) else NamespaceConstraint.Not(disallowedNames, set)
 }
 
 object NamespaceConstraint {
 
-  case object Any extends NamespaceConstraint
-  case class Enum(namespaces: Set[Namespace]) extends NamespaceConstraint
-  case class Not(namespaces: Set[Namespace]) extends NamespaceConstraint
+  case class Any(disallowedNames: DisallowedNames) extends NamespaceConstraint {
+    override def isAllowed(namespace: Namespace): Boolean = true
+    override def withDisallowedNames(dns: DisallowedNames) = Any(dns)
+
+  }
+  case class Enum(disallowedNames: DisallowedNames, namespaces: Set[Namespace]) extends NamespaceConstraint {
+    override def isAllowed(namespace: Namespace): Boolean = namespaces.contains(namespace)
+    override def withDisallowedNames(dns: DisallowedNames) = Enum(dns, namespaces)
+  }
+  case class Not(disallowedNames: DisallowedNames, namespaces: Set[Namespace]) extends NamespaceConstraint {
+    override def isAllowed(namespace: Namespace): Boolean = !namespaces.contains(namespace)
+    override def withDisallowedNames(dns: DisallowedNames) = Not(dns, namespaces)
+  }
 
 }
 
@@ -129,9 +163,7 @@ object OpenContentMode {
   object Suffix extends DefaultOpenContentMode
 }
 
-case class OpenContent(mode: OpenContentMode, any: OpenContentAny)
-
-case class OpenContentAny(namespaceConstraint: NamespaceConstraint, processContents: ProcessContents)
+case class OpenContent(mode: OpenContentMode, wildcard: Wildcard)
 
 sealed trait ProcessContents
 
@@ -163,7 +195,7 @@ object Use {
 
 case class ValueConstraint(lexicalForm: String, defaultNotFixed: Boolean)
 
-case class Wildcard(namespaceConstraint: NamespaceConstraint, disallowedNames: DisallowedNames, processContents: ProcessContents)
+case class Wildcard(namespaceConstraint: NamespaceConstraint, processContents: ProcessContents)
 
 sealed trait XPathDefaultNamespace
 

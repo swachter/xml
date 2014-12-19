@@ -101,6 +101,7 @@ trait WildcardCmp {
   def namespace: Option[NamespaceDefToken]
   def notNamespace: Option[List[NamespaceItemToken]]
   def processContents: SomeValue[ProcessContents]
+  def notQName: Option[List[QNameItem]]
 }
 
 //
@@ -189,7 +190,9 @@ case class ListElem(loc: Location, id: Option[String], annotation: Option[Annota
 
 case class NotationElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, publ: Option[String], system: Option[URI], openAttrs: Map[QName, String]) extends SchemaTopGroupElem
 
-case class OpenContentAnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], openAttrs: Map[QName, String]) extends WildcardCmp
+case class OpenContentAnyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], namespace: Option[NamespaceDefToken], notNamespace: Option[List[NamespaceItemToken]], processContents: SomeValue[ProcessContents], openAttrs: Map[QName, String]) extends WildcardCmp {
+  override def notQName: Option[List[QNameItem]] = None
+}
 
 case class OpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mode: SomeValue[OpenContentMode], optAny: Option[OpenContentAnyElem], openAttrs: Map[QName, String]) extends OpenContentCmp
 

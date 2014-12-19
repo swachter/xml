@@ -357,12 +357,12 @@ object JobMod {
               explicitContentType
             } else {
               // 6.2
-              val w: OpenContentAny = wildcardElement.optAny.fold {
+              val w: Wildcard = wildcardElement.optAny.fold {
                 // there is no <any> element inside openContent
-                // -> use an OpenContentAny that corresponds to an empty <any> element
-                OpenContentAny(NamespaceConstraint.Any, ProcessContents.Strict)
+                // -> use a wildcard that corresponds to an empty <any> element
+                Wildcard(NamespaceConstraint.Any(DisallowedNames.empty), ProcessContents.Strict)
               } {
-                any => OpenContentAny(namespaceConstraint(any, conf.schemaTargetNamespace), any.processContents.value)
+                any => Wildcard(namespaceConstraint(any, conf.schemaTargetNamespace), any.processContents.value)
               }
               explicitContentType match {
                 case EmptyContentType => {
@@ -373,7 +373,7 @@ object JobMod {
                   val openContent = explicitContentType.open.fold {
                     OpenContent(wildcardElement.mode.value, w)
                   } {
-                    openContent => OpenContent(wildcardElement.mode.value, OpenContentAny(openContent.any.namespaceConstraint.union(w.namespaceConstraint), w.processContents))
+                    openContent => OpenContent(wildcardElement.mode.value, Wildcard(openContent.wildcard.namespaceConstraint.union(w.namespaceConstraint), w.processContents))
                   }
                   explicitContentType.copy(open = Some(openContent))
                 }
@@ -386,20 +386,36 @@ object JobMod {
 
     contentTypeJob.map((_, completionJob))
   }
+  
+  // 3.10.2.2
+  def wildcard(cmp: WildcardCmp, targetNamespace: Namespace): Wildcard = {
+    Wildcard(namespaceConstraint(cmp, targetNamespace), cmp.processContents.value)
+  }
 
   // 3.10.2.2
-  def namespaceConstraint(wildcard: WildcardCmp, targetNamespace: Namespace): NamespaceConstraint = {
+  def namespaceConstraint(cmp: WildcardCmp, targetNamespace: Namespace): NamespaceConstraint = {
     def namespaceSet(list: List[NamespaceItemToken]): Set[Namespace] = list.foldLeft(Set[Namespace]())((acc, tok) => acc + (tok match {
       case NamespaceItemToken.TargetNamespace => targetNamespace
       case NamespaceItemToken.Local => name.NoNamespace
       case NamespaceItemToken.Uri(uri) => Namespace(uri)
     }))
-    (wildcard.namespace, wildcard.notNamespace) match {
-      case (Some(NamespaceDefToken.Any), _) => NamespaceConstraint.Any
-      case (Some(NamespaceDefToken.Other), _) => NamespaceConstraint.Not(Set(NoNamespace, targetNamespace))
-      case (Some(NamespaceDefToken.Items(list)), _) => NamespaceConstraint.Enum(namespaceSet(list))
-      case (_, Some(list)) => NamespaceConstraint.Not(namespaceSet(list))
-      case _ => NamespaceConstraint.Any
+    val disallowedNames: DisallowedNames = cmp.notQName.fold {
+      DisallowedNames.empty
+    } {
+      qNameItems => qNameItems.foldLeft(DisallowedNames.empty)((acc, qNameItem) => {
+        qNameItem match {
+          case QNameItem.Defined => acc.copy(defined = true)
+          case QNameItem.DefinedSibling => acc.copy(sibling = true)
+          case QNameItem.Qn(qn) => acc.copy(names = acc.names + qn)
+        }
+      })
+    }
+    (cmp.namespace, cmp.notNamespace) match {
+      case (Some(NamespaceDefToken.Any), _) => NamespaceConstraint.Any(disallowedNames)
+      case (Some(NamespaceDefToken.Other), _) => NamespaceConstraint.Not(disallowedNames, Set(NoNamespace, targetNamespace))
+      case (Some(NamespaceDefToken.Items(list)), _) => NamespaceConstraint.Enum(disallowedNames, namespaceSet(list))
+      case (_, Some(list)) => NamespaceConstraint.Not(disallowedNames, namespaceSet(list))
+      case _ => NamespaceConstraint.Any(disallowedNames)
     }
 
   }
@@ -465,20 +481,7 @@ object JobMod {
   def attrsModelJob(anyAttribute: AnyAttributeElem): Job[AttrsModel] = for {
     conf <- getConf
   } yield {
-      val disallowedNames = anyAttribute.notQName.map(_.foldRight(DisallowedNames.empty)((item, acc) => item match {
-        case QNameItem.Qn(qn) => acc.copy(qNames = acc.qNames + qn)
-        case QNameItem.Defined => acc.copy(defined = true)
-      })).getOrElse(DisallowedNames.empty)
-      val namespaceConstraint = (anyAttribute.namespace, anyAttribute.notNamespace) match {
-        case (Some(ns), _) => ns match {
-          case NamespaceDefToken.Any => NamespaceConstraint.Any
-          case NamespaceDefToken.Other => NamespaceConstraint.Not(Set(Namespace.NoNamespace, conf.schemaTargetNamespace))
-          case NamespaceDefToken.Items(list) => NamespaceConstraint.Enum(convertNamespaceTokens(list, conf))
-        }
-        case (_, Some(nn)) => NamespaceConstraint.Not(convertNamespaceTokens(nn, conf))
-        case _ => NamespaceConstraint.Any
-      }
-      AttrsModel(Map(), Some(Wildcard(namespaceConstraint, disallowedNames, anyAttribute.processContents.value)))
+    AttrsModel(Map(), Some(wildcard(anyAttribute, conf.schemaTargetNamespace)))
   }
 
   // 3.2.2.2
