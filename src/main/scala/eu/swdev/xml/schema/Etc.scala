@@ -23,7 +23,11 @@ object Relation {
   val all = Seq(Extension, Restriction, Substitution, List, Union)
 }
 
-case class DisallowedNames(qNames: Set[QName], defined: Boolean, sibling: Boolean)
+case class DisallowedNames(qNames: Set[QName], defined: Boolean, sibling: Boolean) {
+  def ++(that: DisallowedNames): DisallowedNames = {
+    DisallowedNames(qNames ++ that.qNames, defined || that.defined, sibling || that.sibling)
+  }
+}
 
 object DisallowedNames {
   val empty = DisallowedNames(Set[QName](), false, false)
@@ -89,6 +93,18 @@ sealed trait NamespaceConstraint {
       case (NamespaceConstraint.Enum(set1), NamespaceConstraint.Not(set2)) => anyOrNot(set2 -- set1)
       case (NamespaceConstraint.Not(set1), NamespaceConstraint.Enum(set2)) => anyOrNot(set1 -- set2)
       case (NamespaceConstraint.Not(set1), NamespaceConstraint.Not(set2)) => anyOrNot(set1 intersect set2)
+    }
+  }
+
+  // 3.10.6.4
+  def intersect(that: NamespaceConstraint): NamespaceConstraint = {
+    (this, that) match {
+      case (NamespaceConstraint.Any, _) => that
+      case (_, NamespaceConstraint.Any) => this
+      case (NamespaceConstraint.Enum(set1), NamespaceConstraint.Enum(set2)) => NamespaceConstraint.Enum(set1 intersect set2)
+      case (NamespaceConstraint.Enum(set1), NamespaceConstraint.Not(set2)) => NamespaceConstraint.Enum(set1 -- set2)
+      case (NamespaceConstraint.Not(set1), NamespaceConstraint.Enum(set2)) => NamespaceConstraint.Enum(set2 -- set1)
+      case (NamespaceConstraint.Not(set1), NamespaceConstraint.Not(set2)) => anyOrNot(set1 ++ set2)
     }
   }
 

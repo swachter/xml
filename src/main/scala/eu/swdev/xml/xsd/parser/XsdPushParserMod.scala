@@ -55,7 +55,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val attributeFormDefaultAttr: Parser[SomeValue[Form]] = formAttrDef("attributeFormDefault").some(Form.Unqualified)
 
   lazy val attributeG: Parser[AttributeElemG] = xsElem("attribute")(annotated ~ nameAttr.map(Some(_)) ~ typeAttr.opt ~ defaultAttr.opt ~ fixedAttr.opt ~ inheritableAttr.opt ~ simpleType.opt) gmap Generic[AttributeElemG]
-  lazy val attributeL: Parser[AttributeElemL] = xsElem("attribute")(annotated ~ defRef ~ typeAttr.opt ~ useAttr.opt ~ defaultAttr.opt ~ fixedAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ inheritableAttr.opt ~ simpleType.opt) gmap Generic[AttributeElemL]
+  lazy val attributeL: Parser[AttributeElemL] = xsElem("attribute")(annotated ~ defRef ~ typeAttr.opt ~ useAttr.some(Use.Optional) ~ defaultAttr.opt ~ fixedAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ inheritableAttr.opt ~ simpleType.opt) gmap Generic[AttributeElemL]
 
   lazy val attributeGroupDef: Parser[AttributeGroupDefElem] = xsElem("attributeGroup")(annotated ~ nameAttr ~ attrDecls) gmap Generic[AttributeGroupDefElem]
 

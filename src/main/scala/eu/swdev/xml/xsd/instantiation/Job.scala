@@ -409,59 +409,76 @@ object JobMod {
   }
 
   def attrsModelJob(cmp: ComplexTypeContentCmp): Job[AttrsModel] = {
-    val (attrs, anyAttribute) = cmp match {
-      case _: SimpleContentType => (Nil, None)
-      case m: ComplexContentAbbrev => (m.attrs, m.anyAttribute)
-      case m: ComplexDerivationCmp => (m.attrs, m.anyAttribute)
+    cmp match {
+      case _: SimpleContentType => attrsModelJob(Nil, None)
+      case m: ComplexContentAbbrev => attrsModelJob(m.attrs, m.anyAttribute)
+      case m: ComplexDerivationCmp => attrsModelJob(m.attrs, m.anyAttribute)
     }
-    attrsModelJob(attrs, anyAttribute) 
   }
 
   def attrsModelJob(attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem]): Job[AttrsModel] = {
-    val attrJobs: Seq[Job[AttrsModel]] = attrs map {
-      case Left(ae) => ??? // attrsModelJob(ae)
+    val attrModelJobsForElemsAndGroups: Seq[Job[AttrsModel]] = attrs map {
+      case Left(ae) => attrsModelJob(ae)
       case Right(ag) => attrsModelJob(ag)
     }
-    val listJob: Job[Seq[AttrsModel]] = Job.sequence(attrsModelJob(anyAttribute) +: attrJobs)
+    val attrModelJobs = anyAttribute.fold {
+      attrModelJobsForElemsAndGroups
+    } {
+      any => attrsModelJob(any) +: attrModelJobsForElemsAndGroups
+    }
+    val listJob: Job[Seq[AttrsModel]] = Job.sequence(attrModelJobs)
     listJob.map(_.foldLeft(AttrsModel.empty)((am, acc) => acc.add(am)))
   }
 
   def attrsModelJob(ref: AttributeGroupRefElem): Job[AttrsModel] = await[AttrGroup](ref.ref) map (_.attrsModel)
 
-//  def attrsModelJob(ae: AttributeElemL): Job[AttrsModel] = {
-//    val attrUseJob: Job[AttrUse] = (ae.name, ae.ref) match {
-//      case (Some(an), _) =>
-//      case (_, Some(an)) => for {
-//
-//      } yield AttrUse()
-//      case _ => abort(s"invalid attribute declaration at: ${ae.loc}")
-//    }
-//    attrUseJob.map(u => AttrsModel(Map(u.decl.name -> u), None))
-//  }
+  def attrsModelJob(ae: AttributeElemL): Job[AttrsModel] = {
+    val attrDeclJob: Job[AttrDecl] = (ae.name, ae.ref) match {
+      case (Some(an), _) => for {
+        conf <- getConf
+        simpleType <- ((ae.simpleType, ae.refType) match {
+          case (Some(simpleTypeElem), _) => simpleTypeJob(simpleTypeElem)
+          case (_, Some(ref)) => await[SimpleType](ref)
+          case _ => Job.unit(anySimpleType)
+        })
+      } yield {
+        val namespace = (ae.form, conf.schemaElem.attributeFormDefault.value) match {
+          case (Some(form), _) => if (form == Form.Qualified) conf.schemaTargetNamespace else NoNamespace
+          case (_, form) => if (form == Form.Qualified) conf.schemaTargetNamespace else NoNamespace
+        }
+        AttrDecl(QNameFactory.caching.apply(namespace, LocalName(an)), simpleType, None, ae.inheritable.getOrElse(false))
+      }
+      case (_, Some(ref)) => await[AttrDecl](ref)
+      case _ => abort(s"invalid attribute declaration at: ${ae.loc}")
+    }
+    val constraint = (ae.default, ae.fixed) match {
+      case (Some(s), _) => Some(ValueConstraint(s, true))
+      case (_, Some(s)) => Some(ValueConstraint(s, false))
+      case _ => None
+    }
+    attrDeclJob.map(attrDecl => {
+      AttrsModel(Map(attrDecl.name -> AttrUse(attrDecl, ae.use.value, constraint)), None)
+    })
+  }
 
   // 3.10.2.2
-  def attrsModelJob(anyAttribute: Option[AnyAttributeElem]): Job[AttrsModel] = for {
+  def attrsModelJob(anyAttribute: AnyAttributeElem): Job[AttrsModel] = for {
     conf <- getConf
   } yield {
-    anyAttribute match {
-      case Some(aae) => {
-        val disallowedNames = aae.notQName.map(_.foldRight(DisallowedNames.empty)((item, acc) => item match {
-          case QNameItem.Qn(qn) => acc.copy(qNames = acc.qNames + qn)
-          case QNameItem.Defined => acc.copy(defined = true)
-        })).getOrElse(DisallowedNames.empty)
-        val namespaceConstraint = (aae.namespace, aae.notNamespace) match {
-          case (Some(ns), _) => ns match {
-            case NamespaceDefToken.Any => NamespaceConstraint.Any
-            case NamespaceDefToken.Other => NamespaceConstraint.Not(Set(Namespace.NoNamespace, conf.schemaTargetNamespace))
-            case NamespaceDefToken.Items(list) => NamespaceConstraint.Enum(convertNamespaceTokens(list, conf))
-          }
-          case (_, Some(nn)) => NamespaceConstraint.Not(convertNamespaceTokens(nn, conf))
-          case _ => NamespaceConstraint.Any
+      val disallowedNames = anyAttribute.notQName.map(_.foldRight(DisallowedNames.empty)((item, acc) => item match {
+        case QNameItem.Qn(qn) => acc.copy(qNames = acc.qNames + qn)
+        case QNameItem.Defined => acc.copy(defined = true)
+      })).getOrElse(DisallowedNames.empty)
+      val namespaceConstraint = (anyAttribute.namespace, anyAttribute.notNamespace) match {
+        case (Some(ns), _) => ns match {
+          case NamespaceDefToken.Any => NamespaceConstraint.Any
+          case NamespaceDefToken.Other => NamespaceConstraint.Not(Set(Namespace.NoNamespace, conf.schemaTargetNamespace))
+          case NamespaceDefToken.Items(list) => NamespaceConstraint.Enum(convertNamespaceTokens(list, conf))
         }
-        AttrsModel(Map(), Some(Wildcard(namespaceConstraint, disallowedNames, aae.processContents.value)))
+        case (_, Some(nn)) => NamespaceConstraint.Not(convertNamespaceTokens(nn, conf))
+        case _ => NamespaceConstraint.Any
       }
-      case None => AttrsModel.empty
-    }
+      AttrsModel(Map(), Some(Wildcard(namespaceConstraint, disallowedNames, anyAttribute.processContents.value)))
   }
 
   // 3.2.2.2
@@ -478,7 +495,7 @@ object JobMod {
         }
       }
 
-      AttrDecl(an, targetNamespace, simpleType, None, ae.inheritable.getOrElse(false))
+      AttrDecl(QNameFactory.caching(targetNamespace, LocalName(an)), simpleType, None, ae.inheritable.getOrElse(false))
     }
     case (_, Some(ar)) => await[AttrDecl](ar)
   }
