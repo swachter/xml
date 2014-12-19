@@ -165,6 +165,7 @@ object JobMod {
     typeName <- typeName(cmp.name)
     baseType <- await[Type](cmp.content.base, Created)
     attrs <- attrsModelJob(cmp.content, if (cmp.defaultAttributesApply.value) conf.schemaElem.defaultAttributes else None)
+    mergedAttrs <- mergeWithInheritedAttrs(attrs, baseType, cmp.content.derivationMethod)
     finl = cmp.finl.getOrElse(conf.schemaElem.finalDefault.value).toSet[CtDerivationCtrl]
     block = cmp.block.getOrElse(conf.schemaElem.blockDefault.value).toSet[CtBlockCtrl]
     assertions <- assertionsJob(cmp.content)
@@ -173,6 +174,50 @@ object JobMod {
     _ <- created(ct)
     _ <- completeContentModelJob
   } yield ct
+
+  // 3.4.2.4 & 3.4.2.5
+  def mergeWithInheritedAttrs(attrs: AttrsModel, baseType: Type, derivationMethod: CtDerivationCtrl): Job[AttrsModel] = {
+    val usesJob: Job[Map[QName, AttrUse]] = baseType match {
+      case baseType: ComplexType => derivationMethod match {
+        case Relation.Extension => {
+          // TODO check valid extension (3.4.6.2)
+          Job.unit(baseType.attrs.attrUses ++ attrs.attrUses)
+        }
+        case Relation.Restriction => {
+          // TODO check valid restriction (3.4.6.3)
+          // inherited attributes are overridden
+          Job.unit(baseType.attrs.attrUses ++ attrs.attrUses)
+        }
+      }
+      case _ => Job.unit(attrs.attrUses)
+    }
+    // 3.4.2.5
+    val wildcard: Option[Wildcard] = derivationMethod match {
+      // 2.1
+      case Relation.Restriction => {
+        // TODO check restriction
+        attrs.wildcard
+      }
+      // 2.2
+      case Relation.Extension => {
+        // 2.2.1
+        val baseWildcard = baseType match {
+          case baseType: ComplexType => baseType.attrs.wildcard
+          case _ => None
+        }
+        // 2.2.2
+        (attrs.wildcard, baseWildcard) match {
+          // 2.2.2.1
+          case (w, None) => w
+          // 2.2.2.2
+          case (None, w) => w
+          // 2.2.2.3
+          case (Some(w), Some(bw)) => Some(Wildcard(w.namespaceConstraint.union(bw.namespaceConstraint), w.processContents))
+        }
+      }
+    }
+    usesJob.map(AttrsModel(_, wildcard))
+  }
 
   def assertionsJob(content: ComplexTypeContentCmp): Job[Seq[Assertion]] = {
     val assertElems: Seq[AssertElem] = content match {
