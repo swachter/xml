@@ -77,7 +77,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val complexRestriction: Parser[ComplexRestrictionElem] = xsElem("restriction")(annotated ~ baseAttr ~ complexContentModel) gmap Generic[ComplexRestrictionElem]
 
-  lazy val complexType: Parser[ComplexTypeElem] = xsElem("complexType")(annotated ~ someNameAttr(nameAttr) ~ mixedAttr.opt ~ abstractAttr.some(false) ~ complexTypeFinalAttr.opt ~ complexTypeBlockAttr.opt ~ defaultAttributesApplyAttr.opt ~ complexTypeContent) gmap Generic[ComplexTypeElem]
+  lazy val complexType: Parser[ComplexTypeElem] = xsElem("complexType")(annotated ~ someNameAttr(nameAttr) ~ mixedAttr.opt ~ abstractAttr.some(false) ~ complexTypeFinalAttr.opt ~ complexTypeBlockAttr.opt ~ defaultAttributesApplyAttr.some(true) ~ complexTypeContent) gmap Generic[ComplexTypeElem]
 
   lazy val complexTypeBlockAttr: Parser[RelationSet[CtBlockCtrl]] = derivationCtrlAttr("block")(relExtension orElse relRestriction)
 

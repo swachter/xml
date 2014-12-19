@@ -64,20 +64,20 @@ sealed trait TypeDefParticleCmp extends ParticleCmp {
 
 //
 
-sealed trait ComplexDerivationCmp {
+sealed trait DerivationCmp {
   def base: QName
+  def derivationMethod: CtDerivationCtrl
   def attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]]
   def anyAttribute: Option[AnyAttributeElem]
-  def derivationMethod: CtDerivationCtrl
   def asserts: Seq[AssertElem]
+}
+
+sealed trait ComplexDerivationCmp extends DerivationCmp {
   def typeDefParticle: Option[TypeDefParticleCmp]
   def openContent: Option[OpenContentElem]
 }
 
-sealed trait SimpleDerivationCmp {
-  def base: QName
-  def derivationMethod: CtDerivationCtrl
-  def asserts: Seq[AssertElem]
+sealed trait SimpleDerivationCmp extends DerivationCmp {
 }
 
 sealed trait ComplexTypeContentCmp {
@@ -162,7 +162,7 @@ case class ComplexRestrictionElem(loc: Location, id: Option[String], annotation:
   override def derivationMethod = Relation.Restriction
 }
 
-case class ComplexTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: SomeValue[String], mixed: Option[Boolean], abstrct: SomeValue[Boolean], finl: Option[RelationSet[CtDerivationCtrl]], block: Option[RelationSet[CtBlockCtrl]], defaultAttributesApply: Option[Boolean], content: ComplexTypeContentCmp, openAttrs: Map[QName, String]) extends RedefinableGroupElem
+case class ComplexTypeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: SomeValue[String], mixed: Option[Boolean], abstrct: SomeValue[Boolean], finl: Option[RelationSet[CtDerivationCtrl]], block: Option[RelationSet[CtBlockCtrl]], defaultAttributesApply: SomeValue[Boolean], content: ComplexTypeContentCmp, openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
 case class DefaultOpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], appliesToEmpty: SomeValue[Boolean], mode: SomeValue[DefaultOpenContentMode], any: OpenContentAnyElem, openAttrs: Map[QName, String]) extends OpenContentCmp {
   override def optAny = Some(any)
@@ -211,11 +211,11 @@ case class SimpleContentElem(loc: Location, id: Option[String], annotation: Opti
   def derivationMethod: CtDerivationCtrl = derivation.derivationMethod
 }
 
-case class SimpleContentExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivationCmp {
+case class SimpleContentExtensionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], openAttrs: Map[QName, String]) extends SimpleDerivationCmp {
   override def derivationMethod = Relation.Extension
 }
 
-case class SimpleContentRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, simpleType: Option[SimpleTypeElem], facets: Seq[FacetElem], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], any: Option[AnyAttributeElem], asserts: Seq[AssertElem], syntheticTypeName: String, openAttrs: Map[QName, String]) extends SimpleDerivationCmp with HasFacetSpecs {
+case class SimpleContentRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: QName, simpleType: Option[SimpleTypeElem], facets: Seq[FacetElem], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem], syntheticTypeName: String, openAttrs: Map[QName, String]) extends SimpleDerivationCmp with HasFacetSpecs {
   override def derivationMethod = Relation.Restriction
 }
 

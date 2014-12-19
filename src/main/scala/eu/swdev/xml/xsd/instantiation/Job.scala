@@ -164,7 +164,7 @@ object JobMod {
     conf <- getConf
     typeName <- typeName(cmp.name)
     baseType <- await[Type](cmp.content.base, Created)
-    attrs <- attrsModelJob(cmp.content)
+    attrs <- attrsModelJob(cmp.content, if (cmp.defaultAttributesApply.value) conf.schemaElem.defaultAttributes else None)
     finl = cmp.finl.getOrElse(conf.schemaElem.finalDefault.value).toSet[CtDerivationCtrl]
     block = cmp.block.getOrElse(conf.schemaElem.blockDefault.value).toSet[CtBlockCtrl]
     assertions <- assertionsJob(cmp.content)
@@ -424,15 +424,21 @@ object JobMod {
     ???
   }
 
-  def attrsModelJob(cmp: ComplexTypeContentCmp): Job[AttrsModel] = {
-    cmp match {
-      case _: SimpleContentType => attrsModelJob(Nil, None)
-      case m: ComplexContentAbbrev => attrsModelJob(m.attrs, m.anyAttribute)
-      case m: ComplexDerivationCmp => attrsModelJob(m.attrs, m.anyAttribute)
+  def attrsModelJob(cmp: ComplexTypeContentCmp, defaultAttributes: Option[QName]): Job[AttrsModel] = {
+    val job: Job[AttrsModel] = cmp match {
+      case m: SimpleContentElem => attrsModelJob2(m.derivation.attrs, m.derivation.anyAttribute)
+      case m: ComplexContentAbbrev => attrsModelJob2(m.attrs, m.anyAttribute)
+      case m: ComplexContentElem => attrsModelJob2(m.derivation.attrs, m.derivation.anyAttribute)
+    }
+    defaultAttributes.fold {
+      job
+    } {
+      // when a default attribute group must be considered then add it at the end
+      qn => job >>= { attrsModel => await[AttrGroup](qn).map(defaultAttributeGroup => attrsModel.add(defaultAttributeGroup.attrsModel)) }
     }
   }
 
-  def attrsModelJob(attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem]): Job[AttrsModel] = {
+  def attrsModelJob2(attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem]): Job[AttrsModel] = {
     val attrModelJobsForElemsAndGroups: Seq[Job[AttrsModel]] = attrs map {
       case Left(ae) => attrsModelJob(ae)
       case Right(ag) => attrsModelJob(ag)
@@ -501,6 +507,7 @@ object JobMod {
       AttrDecl(QNameFactory.caching(targetNamespace, LocalName(an)), simpleType, None, ae.inheritable.getOrElse(false))
     }
     case (_, Some(ar)) => await[AttrDecl](ar)
+    case _ => abort(s"attribute must have a name or a ref attribute at: ${ae.loc}")
   }
 
   // 3.2.2.1 / 3.2.2.2
