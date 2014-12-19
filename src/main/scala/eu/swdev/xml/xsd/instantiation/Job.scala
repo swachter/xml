@@ -303,15 +303,15 @@ object JobMod {
       case p: AllElem if (p.particles.isEmpty) => false
       case p: SequenceElem if (p.particles.isEmpty) => false
       // 2.1.3
-      case p: ChoiceElem if (p.minOccurs.getOrElse(1) == 0 && p.particles.isEmpty) => false
+      case p: ChoiceElem if (p.occurs.min == 0 && p.particles.isEmpty) => false
       // 2.1.4
-      case t: TypeDefParticleCmp if (t.maxOccurs.getOrElse(1) == 0) => false
+      case t: TypeDefParticleCmp if (t.occurs.max == MaxOccurs.zero) => false
       case _ => true
     }
     // 3
     val effectiveContent: Option[TypeDefParticleCmp] = explicitContent.orElse(if (effectiveMixed) {
       // 3.1.1
-      Some(SequenceElem(complexContent.loc, None, None, Some(1), Some(MaxOccurs.Bounded(1)), Seq(), Map()))
+      Some(SequenceElem(complexContent.loc, None, None, Occurs.once, Seq(), Map()))
     } else {
       // 3.1.2
       None
@@ -361,16 +361,16 @@ object JobMod {
                 val (gj, completionJob) = groupJob(effectiveContent.get)
                 (gj.map(_ match {
                   // 4.2.3.2
-                  case groupParticle: AllGroupParticle => AllGroupParticle(Occurs(effectiveContent.get.minOccurs.getOrElse(1), MaxOccurs.one), baseParticle.nested ++ groupParticle.nested)
+                  case groupParticle: AllGroupParticle => AllGroupParticle(Occurs(effectiveContent.get.occurs.min, MaxOccurs.one), baseParticle.nested ++ groupParticle.nested)
                   // 4.2.3.3
-                  case groupParticle => SeqGroupParticle(Occurs(1, MaxOccurs.one), Seq(baseParticle, groupParticle))
+                  case groupParticle => SeqGroupParticle(Occurs.once, Seq(baseParticle, groupParticle))
                 }), completionJob)
               }
 
               // 4.2.3.3
               case baseParticle => {
                 val (gj, completionJob) = groupJob(effectiveContent.get)
-                (gj.map(groupParticle => SeqGroupParticle(Occurs(1, MaxOccurs.one), Seq(baseParticle, groupParticle))), completionJob)
+                (gj.map(groupParticle => SeqGroupParticle(Occurs.once, Seq(baseParticle, groupParticle))), completionJob)
               }
 
             }
@@ -466,7 +466,14 @@ object JobMod {
   }
 
   def groupJob(particleCmp: TypeDefParticleCmp): (Job[GroupParticle], Job[Unit]) = {
-    ???
+    particleCmp match {
+      case cmp: AllElem => ???
+      case cmp: ChoiceElem => ???
+      case cmp: SequenceElem => ???
+      case cmp: GroupRefElem => {
+        (await[GroupParticle](cmp.ref).map(_.withOccurs(cmp.occurs)), Job.unit(()))
+      }
+    }
   }
 
   def attrsModelJob(cmp: ComplexTypeContentCmp, defaultAttributes: Option[QName]): Job[AttrsModel] = {

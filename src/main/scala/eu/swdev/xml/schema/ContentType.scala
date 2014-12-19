@@ -48,6 +48,7 @@ sealed trait Particle {
 
 sealed trait GroupParticle extends Particle {
   def nested: Seq[Particle]
+  def withOccurs(o: Occurs): this.type
 }
 
 trait SeqAllEffectiveTotalRange { self: GroupParticle =>
@@ -63,6 +64,7 @@ trait SeqAllEffectiveTotalRange { self: GroupParticle =>
 }
 
 sealed case class SeqGroupParticle(occurs: Occurs, nested: Seq[Particle]) extends GroupParticle with SeqAllEffectiveTotalRange {
+  override def withOccurs(o: Occurs) = copy(occurs = o)
 }
 
 sealed case class ChoiceGroupParticle(occurs: Occurs, nested: Seq[Particle]) extends GroupParticle {
@@ -73,9 +75,11 @@ sealed case class ChoiceGroupParticle(occurs: Occurs, nested: Seq[Particle]) ext
     val max = occurs.max * nestedRanges.map(_.max).foldLeft(MaxOccurs.zero)((acc, o) => acc max o)
     Occurs(min, max)
   }
+  override def withOccurs(o: Occurs) = copy(occurs = o)
 }
 
 sealed case class AllGroupParticle(occurs: Occurs, nested: Seq[Particle]) extends GroupParticle with SeqAllEffectiveTotalRange {
+  override def withOccurs(o: Occurs) = copy(occurs = o)
 }
 
 case class ElemDecl()

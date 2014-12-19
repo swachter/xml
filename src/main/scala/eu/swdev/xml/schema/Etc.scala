@@ -50,6 +50,10 @@ object Form {
 
 case class Occurs(min: Int, max: MaxOccurs)
 
+object Occurs {
+  val once = Occurs(1, MaxOccurs.one)
+}
+
 sealed trait MaxOccurs {
   def isUnbounded: Boolean
 

@@ -197,7 +197,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
     case s => resolveQn(s).map(QNameItem.Qn(_))
   })
 
-  lazy val occurs = minOccursAttr.opt ~ maxOccursAttr.opt
+  lazy val occurs: Parser[Occurs] = minOccursAttr.some(1).map(_.value) ~ maxOccursAttr.some(MaxOccurs.one).map(_.value) gmap Generic[Occurs]
 
   lazy val openAttrs: Parser[OpenAttrsValue] = selectAttrs(_.namespace != XsdNamespace)
 
