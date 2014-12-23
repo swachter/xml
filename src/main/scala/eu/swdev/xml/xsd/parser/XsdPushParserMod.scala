@@ -69,7 +69,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val complexContent: Parser[ComplexContentElem] = xsElem("complexContent")(annotated ~ mixedAttr.opt ~ (complexRestriction | complexExtension)) gmap Generic[ComplexContentElem]
   
-  lazy val complexContentAbbrev: Parser[ComplexContentAbbrev] = getState.map(_.lastLocation.get) ~ complexContentModel gmap Generic[ComplexContentAbbrev]
+  lazy val complexContentAbbrev: Parser[ComplexContentAbbrev] = lastLocation ~ complexContentModel gmap Generic[ComplexContentAbbrev]
 
   lazy val complexContentModel = openContent.opt ~ typeDefParticle.opt ~ attrDecls ~ assert.rep
 
@@ -105,7 +105,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val documentation: Parser[DocumentationElem] = xsElem("documentation")(sourceAttr ~ langAttr ~ rawXml) gmap Generic[DocumentationElem]
 
-  lazy val element: Parser[ElementElem] = xsElem("element")(annotated ~ defRef ~ typeAttr.opt ~ substitutionGroup.opt ~ occurs ~ defaultAttr.opt ~ fixedAttr.opt ~ nillableAttr.opt ~ abstractAttr.opt ~ elementFinalAttr.opt ~ elementBlockAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ either(simpleType, complexType).opt ~ alternative.rep ~ identityConstraint.rep) gmap Generic[ElementElem ]
+  lazy val element: Parser[ElementElem] = xsElem("element")(annotated ~ defRef ~ typeAttr.opt ~ substitutionGroup.opt ~ occurs ~ defaultAttr.opt ~ fixedAttr.opt ~ nillableAttr.opt ~ abstractAttr.some(false) ~ elementFinalAttr.opt ~ elementBlockAttr.opt ~ formAttr.opt ~ targetNamespaceAttr.opt ~ either(simpleType, complexType).opt ~ alternative.rep ~ identityConstraint.rep) gmap Generic[ElementElem ]
 
   lazy val elementBlockAttr: Parser[RelationSet[ElemBlockCtrl]] = derivationCtrlAttr("block")(relExtension orElse relRestriction orElse relSubstitution)
 
@@ -137,7 +137,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val idAttr: Parser[IdAttrValue] = strAttr("id").opt
 
-  lazy val identityConstraint: Parser[IdentityConstraintGroupElem] = unique | key | keyref
+  lazy val identityConstraint: Parser[IdentityConstraintCmp[_]] = unique | key | keyref
 
   lazy val importElem: Parser[ImportElem] = xsElem("import")(annotated ~ schemaLocationAttr.opt ~ namespaceAttr) gmap Generic[ImportElem]
 
@@ -147,11 +147,15 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val itemTypeAttr: Parser[QName] = qnAttr("itemType")
 
-  lazy val key: Parser[KeyElem] = xsElem("key")(keybase) gmap Generic[KeyElem]
+  lazy val key: Parser[KeyElem] = xsElem("key")(keyRefOrDef(keyDef)) gmap Generic[KeyElem]
 
-  lazy val keybase = annotated ~ strAttr("name").opt ~ qnAttr("ref").opt ~ (selector & field.rep1).opt
+  lazy val keyDef: Parser[KeyDefElem] = lastLocation ~ strAttr("name") ~ selector ~ field.rep1 gmap Generic[KeyDefElem]
 
-  lazy val keyref: Parser[KeyRefElem] = xsElem("keyref")(keybase ~ qnAttr("refer").opt) gmap Generic[KeyRefElem]
+  lazy val keyDefExt: Parser[KeyDefExtElem] = lastLocation ~ strAttr("name") ~ selector ~ field.rep1 ~ qnAttr("refer") gmap Generic[KeyDefExtElem]
+
+  def keyRefOrDef[KD <: KeyDefCmp](p: Parser[KD]) = annotated ~ either(qnAttr("ref"), p)
+
+  lazy val keyref: Parser[KeyRefElem] = xsElem("keyref")(keyRefOrDef(keyDefExt)) gmap Generic[KeyRefElem]
 
   lazy val langAttr = optionalAttr(QNameFactory.caching(XmlNamespace, LocalName("lang")))
 
@@ -269,7 +273,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val union: Parser[UnionElem] = xsElem("union")(annotated ~ memberTypes.opt ~ simpleType.rep) gmap Generic[UnionElem]
 
-  lazy val unique: Parser[UniqueElem] = xsElem("unique")(keybase) gmap Generic[UniqueElem]
+  lazy val unique: Parser[UniqueElem] = xsElem("unique")(keyRefOrDef(keyDef)) gmap Generic[UniqueElem]
 
   lazy val useAttr: Parser[Use] = strAttr("use") >>= {
     case "optional" => success(Use.Optional)
@@ -372,6 +376,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
   private def qNamesAttr(name: String): Parser[List[QName]] = strAttr(name) map (_.split("\\s+").toList) >>= (Parser.traverse(_)(resolveQn))
 
   val namespaces: Parser[Namespaces] = getState.map(_.namespacesStack.head)
+
+  val lastLocation = getState.map(_.lastLocation.get)
 
   private def booleanAttr(name: String): Parser[Boolean] = strAttr(name) >>= {
     case "true" => success(true)

@@ -1,5 +1,6 @@
 package eu.swdev.xml.schema
 
+import eu.swdev.xml.base.SomeValue
 import eu.swdev.xml.name.QName
 
 /**
@@ -84,7 +85,7 @@ sealed case class AllGroupParticle(occurs: Occurs, nested: Seq[Particle]) extend
   override def withOccurs(o: Occurs) = copy(occurs = o)
 }
 
-case class ElemDecl(occurs: Occurs, name: QName, var elemType: Type) extends NestedParticle {
+case class ElemDecl(occurs: Occurs, name: QName, var elemType: Type, nillable: Boolean, abstrct: Boolean, valueConstraint: Option[ValueConstraint], identityConstraints: Seq[IdentityConstraint]) extends NestedParticle {
   override def effectiveTotalRange: Occurs = occurs
 }
 

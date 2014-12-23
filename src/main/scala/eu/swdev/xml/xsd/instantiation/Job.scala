@@ -151,7 +151,7 @@ object JobMod {
     }}
   }
 
-  def created[O <: SchemaTopComponent](a: O): Job[Unit] = Job { state => Define(a, Created, Done((), state)) }
+  def define[O <: SchemaTopComponent](a: O, stage: Stage): Job[Unit] = Job { state => Define(a, stage, Done((), state)) }
 
   def getConf: Job[JobConf] = Job { state => Done(state.config, state) }
   
@@ -162,13 +162,16 @@ object JobMod {
 
   // 3.4.1
   def complexTypeJob(cmp: ComplexTypeElem): Job[ComplexType] = for {
-    cct <- createComplexTypeJob(cmp)
-    _ <- cct._2 // complete the complex type
-  } yield cct._1
+    (complexType, continuation1) <- createComplexTypeJob(cmp)
+    _ <- define(complexType, Created)
+    continuation2 <- continuation1
+    _ <- define(complexType, Completed)
+    _ <- continuation2
+  } yield complexType
 
   def createComplexTypeJob(cmp: ComplexTypeElem): Job[(ComplexType, Job[Job[Unit]])] = for {
     conf <- getConf
-    typeName <- typeName(cmp.name)
+    typeName <- qName(cmp.name)
     baseType <- await[Type](cmp.content.base, Created)
     attrs <- attrsModelJob(cmp.content, if (cmp.defaultAttributesApply.value) conf.schemaElem.defaultAttributes else None)
     mergedAttrs <- mergeWithInheritedAttrs(attrs, baseType, cmp.content.derivationMethod)
@@ -177,7 +180,6 @@ object JobMod {
     assertions <- assertionsJob(cmp.content)
     (contentModel, completeContentModelJob) <- contentModelJob(cmp.content, baseType, cmp.mixed)
     ct = ComplexType(typeName, baseType, cmp.content.derivationMethod, attrs, contentModel, cmp.abstrct.value, finl, block, assertions)
-    _ <- created(ct)
   } yield (ct, completeContentModelJob)
 
   // 3.4.2.4 & 3.4.2.5
@@ -266,7 +268,7 @@ object JobMod {
             } {
               simpleTypeElem => simpleTypeJob(simpleTypeElem)
             }
-            typeName <- typeName(DefaultValue(d.syntheticTypeName))
+            typeName <- qName(DefaultValue(d.syntheticTypeName))
             restricted <- simpleTypeRestriction(typeName, b, d.facetSpecs)
           } yield restricted
         }
@@ -278,7 +280,7 @@ object JobMod {
             } {
               simpleTypeElem => simpleTypeJob(simpleTypeElem)
             }
-            typeName <- typeName(DefaultValue(d.syntheticTypeName))
+            typeName <- qName(DefaultValue(d.syntheticTypeName))
             restricted <- simpleTypeRestriction(typeName, sb, d.facetSpecs)
           } yield restricted
         }
@@ -520,12 +522,13 @@ object JobMod {
       case (Some(name), _) => {
         for {
           conf <- getConf
+          identityConstraints <- Job.sequence(cmp.constraints.map(identityConstraint(_)))
         } yield {
-          val elemDecl = ElemDecl(cmp.occurs, QNameFactory.caching.apply(conf.schemaTargetNamespace, LocalName(name)), null)
+          val elemDecl = ElemDecl(cmp.occurs, QNameFactory.caching.apply(conf.schemaTargetNamespace, LocalName(name)), null, cmp.nillable.getOrElse(false), cmp.abstr.value, valueConstraint(cmp), identityConstraints)
           val continuationJob: Job[Job[Unit]] = for {
-            (elementType: Type, typeCompletionJob: Job[Unit]) <- cmp.inlinedType.map {
+            (elementType: Type, typeCompletionJob: Job[Unit@unchecked]) <- cmp.inlinedType.map {
               // 1
-              case Left(simpleTypeElem) => simpleTypeJob(simpleTypeElem).map((_, Job.unit()))
+              case Left(simpleTypeElem) => simpleTypeJob(simpleTypeElem).map((_, Job.unit(())))
               case Right(complexTypeElem) => createComplexTypeJob(complexTypeElem)
             }.orElse {
               // 2
@@ -544,10 +547,43 @@ object JobMod {
           (elemDecl, continuationJob)
         }
       }
-      case (_, Some(ref)) => await[ElemDecl](ref).map((_, Job.unit(Job.unit())))
+      case (_, Some(ref)) => await[ElemDecl](ref).map((_, Job.unit(Job.unit(()))))
       case _ => abort(s"missing name or ref attribute on element declaration")
     }
   }
+
+  def identityConstraint(cmp: IdentityConstraintCmp[_]): Job[IdentityConstraint] = {
+    cmp match {
+      case cmp: KeyElem => cmp.refOrDef match {
+        case Left(ref) => await[KeyConstraint](ref)
+        case Right(keyDef) => for {
+          name <- qName(keyDef.name)
+          c = KeyConstraint(name, selector(keyDef.selector), keyDef.fields.map(field(_)))
+          _ <- define(c, Completed)
+        } yield c
+      }
+      case cmp: KeyRefElem => cmp.refOrDef match {
+        case Left(ref) => await[KeyRefConstraint](ref)
+        case Right(keyDef) => for {
+          name <- qName(keyDef.name)
+          referencedKey <- await[KeyOrUniqueConstraint](keyDef.refer)
+          c = KeyRefConstraint(name, selector(keyDef.selector), keyDef.fields.map(field(_)), referencedKey)
+          _ <- define(c, Completed)
+        } yield c
+      }
+      case cmp: UniqueElem => cmp.refOrDef match {
+        case Left(ref) => await[UniqueConstraint](ref)
+        case Right(keyDef) => for {
+          name <- qName(keyDef.name)
+          c = UniqueConstraint(name, selector(keyDef.selector), keyDef.fields.map(field(_)))
+          _ <- define(c, Completed)
+        } yield c
+      }
+    }
+  }
+
+  def selector(cmp: SelectorElem): String = cmp.xPath
+  def field(cmp: FieldElem): String = cmp.xPath
 
   def attrsModelJob(cmp: ComplexTypeContentCmp, defaultAttributes: Option[QName]): Job[AttrsModel] = {
     val job: Job[AttrsModel] = cmp match {
@@ -598,14 +634,15 @@ object JobMod {
       case (_, Some(ref)) => await[AttrDecl](ref)
       case _ => abort(s"invalid attribute declaration at: ${ae.loc}")
     }
-    val constraint = (ae.default, ae.fixed) match {
-      case (Some(s), _) => Some(ValueConstraint(s, true))
-      case (_, Some(s)) => Some(ValueConstraint(s, false))
-      case _ => None
-    }
     attrDeclJob.map(attrDecl => {
-      AttrsModel(Map(attrDecl.name -> AttrUse(attrDecl, ae.use.value, constraint)), None)
+      AttrsModel(Map(attrDecl.name -> AttrUse(attrDecl, ae.use.value, valueConstraint(ae))), None)
     })
+  }
+
+  def valueConstraint(cmp: ValueConstraintCmp): Option[ValueConstraint] = (cmp.default, cmp.fixed) match {
+    case (Some(s), _) => Some(ValueConstraint(s, true))
+    case (_, Some(s)) => Some(ValueConstraint(s, false))
+    case _ => None
   }
 
   // 3.10.2.2
@@ -643,16 +680,16 @@ object JobMod {
   // part 2; 4.1.2
   def simpleTypeJob(st: SimpleTypeElem): Job[SimpleType] = st.derivation match {
     case d: SimpleTypeRestrictionElem => for {
-      typeName <- typeName(st.name)
+      typeName <- qName(st.name)
       baseType <- d.base.fold(simpleTypeJob(d.tpe.get))(await[SimpleType](_))
       restrictedType <- simpleTypeRestriction(typeName, baseType, d.facetSpecs)
     } yield restrictedType
     case d: ListElem => for {
-      typeName <- typeName(st.name)
+      typeName <- qName(st.name)
       itemType <- d.itemType.fold(simpleTypeJob(d.simpleType.get))(await[SimpleType](_))
     } yield ListType(typeName, anySimpleType, Facets.withWspCollapse[ListVal], itemType)
     case d: UnionElem => for {
-      typeName <- typeName(st.name)
+      typeName <- qName(st.name)
       memberTypes <- d.memberTypes.fold(Job.unit(Seq[SimpleType]()))(qns => Job.traverse(qns)(await[SimpleType](_))) & Job.traverse(d.simpleTypes)(simpleTypeJob(_))
     } yield UnionType(typeName, anySimpleType, Facets.empty[SimpleVal], memberTypes._1 ++ memberTypes._2)
   }
@@ -777,9 +814,11 @@ object JobMod {
   }
 
   // part 2; 4.1.2
-  def typeName(someName: SomeValue[String]): Job[QName] = for {
+  def qName(someName: SomeValue[String]): Job[QName] = qName(someName.value)
+
+  def qName(name: String): Job[QName] = for {
     conf <- getConf
-  } yield QNameFactory.caching(conf.schemaTargetNamespace, LocalName(someName.value))
+  } yield QNameFactory.caching(conf.schemaTargetNamespace, LocalName(name))
 
   def convertNamespaceTokens(list: List[NamespaceItemToken], conf: JobConf): Set[Namespace] = {
     list.map {

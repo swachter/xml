@@ -22,7 +22,9 @@ sealed trait CompositionGroupElem
 
 sealed trait FacetElem
 
-sealed trait IdentityConstraintGroupElem
+sealed trait IdentityConstraintCmp[KD <: KeyDefCmp] {
+  def refOrDef: KeyRefOrDef[KD]
+}
 
 sealed trait RedefinableGroupElem extends SchemaTopGroupElem
 
@@ -106,6 +108,17 @@ trait WildcardCmp {
   def notQName: Option[List[QNameItem]]
 }
 
+trait ValueConstraintCmp {
+  def fixed: Option[String]
+  def default: Option[String]
+}
+
+trait KeyDefCmp {
+  def name: String
+  def selector: SelectorElem
+  def fields: Seq[FieldElem]
+}
+
 //
 //
 //
@@ -122,14 +135,12 @@ case class AnyElem(loc: Location, id: Option[String], annotation: Option[Annotat
 
 case class AppInfoElem(loc: Location, source: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
-sealed trait AttributeElem {
+sealed trait AttributeElem extends ValueConstraintCmp {
   def loc: Location
   def id: Option[String]
   def annotation: Option[AnnotationElem]
   def name: Option[String]
   def refType: Option[QName]
-  def default: Option[String]
-  def fixed: Option[String]
   def inheritable: Option[Boolean]
   def simpleType: Option[SimpleTypeElem]
 }
@@ -172,7 +183,7 @@ case class DefaultOpenContentElem(loc: Location, id: Option[String], annotation:
 
 case class DocumentationElem(loc: Location, source: Option[String], lang: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
-case class ElementElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], subsitutionGroup: Option[List[QName]], occurs: Occurs, default: Option[String], fixed: Option[String], nillable: Option[Boolean], abstr: Option[Boolean], finl: Option[RelationSet[ElemFinalCtrl]], block: Option[RelationSet[ElemBlockCtrl]], form: Option[Form], targetNamespace: Option[URI], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], alternatives: Seq[AlternativeElem], constraints: Seq[IdentityConstraintGroupElem], openAttrs: Map[QName, String]) extends SchemaTopGroupElem with NestedParticleCmp
+case class ElementElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], subsitutionGroup: Option[List[QName]], occurs: Occurs, default: Option[String], fixed: Option[String], nillable: Option[Boolean], abstr: SomeValue[Boolean], finl: Option[RelationSet[ElemFinalCtrl]], block: Option[RelationSet[ElemBlockCtrl]], form: Option[Form], targetNamespace: Option[URI], inlinedType: Option[Either[SimpleTypeElem, ComplexTypeElem]], alternatives: Seq[AlternativeElem], constraints: Seq[IdentityConstraintCmp[_]], openAttrs: Map[QName, String]) extends SchemaTopGroupElem with NestedParticleCmp with ValueConstraintCmp
 
 case class FieldElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[XPathDefaultNamespace], openAttrs: Map[QName, String])
 
@@ -184,9 +195,13 @@ case class ImportElem(loc: Location, id: Option[String], annotation: Option[Anno
 
 case class IncludeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: String, openAttrs: Map[QName, String]) extends CompositionGroupElem
 
-case class KeyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], sel: Option[(SelectorElem, List[FieldElem])], openAttrs: Map[QName, String]) extends IdentityConstraintGroupElem
+case class KeyDefElem(loc: Location, name: String, selector: SelectorElem, fields: List[FieldElem]) extends KeyDefCmp
 
-case class KeyRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], sel: Option[(SelectorElem, List[FieldElem])], refer: Option[QName], openAttrs: Map[QName, String]) extends IdentityConstraintGroupElem
+case class KeyDefExtElem(loc: Location, name: String, selector: SelectorElem, fields: List[FieldElem], refer: QName) extends KeyDefCmp
+
+case class KeyElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], refOrDef: KeyRefOrDef[KeyDefElem], openAttrs: Map[QName, String]) extends IdentityConstraintCmp[KeyDefElem]
+
+case class KeyRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], refOrDef: KeyRefOrDef[KeyDefExtElem], openAttrs: Map[QName, String]) extends IdentityConstraintCmp[KeyDefExtElem]
 
 case class ListElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], itemType: Option[QName], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends SimpleDerivationGroupElem
 
@@ -225,7 +240,7 @@ case class SimpleTypeElem(loc: Location, id: Option[String], annotation: Option[
 
 case class SimpleTypeRestrictionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], base: Option[QName], tpe: Option[SimpleTypeElem], facets: Seq[FacetElem], openAttrs: Map[QName, String]) extends SimpleDerivationGroupElem with HasFacetSpecs
 
-case class UniqueElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], sel: Option[(SelectorElem, List[FieldElem])], openAttrs: Map[QName, String]) extends IdentityConstraintGroupElem
+case class UniqueElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], refOrDef: KeyRefOrDef[KeyDefElem], openAttrs: Map[QName, String]) extends IdentityConstraintCmp[KeyDefElem]
 
 case class UnionElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], memberTypes: Option[List[QName]], simpleTypes: Seq[SimpleTypeElem], openAttrs: Map[QName, String]) extends SimpleDerivationGroupElem
 

@@ -211,3 +211,15 @@ object XPathDefaultNamespace {
   sealed case class Uri(uri: URI) extends XPathDefaultNamespace
 
 }
+
+sealed trait IdentityConstraint extends SchemaTopComponent {
+  def name: QName
+  def selector: String
+  def fields: Seq[String]
+}
+
+sealed trait KeyOrUniqueConstraint extends IdentityConstraint
+
+case class KeyConstraint(name: QName, selector: String, fields: Seq[String]) extends KeyOrUniqueConstraint
+case class UniqueConstraint(name: QName, selector: String, fields: Seq[String]) extends KeyOrUniqueConstraint
+case class KeyRefConstraint(name: QName, selector: String, fields: Seq[String], referencedKey: KeyOrUniqueConstraint) extends IdentityConstraint

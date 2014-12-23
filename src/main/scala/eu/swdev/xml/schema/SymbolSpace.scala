@@ -29,7 +29,10 @@ object SymbolSpace {
     type SymbolType = AttrGroup
     def name = "attribute group"
   }
-  //implicit val IdentityConstraint extends SymbolSpace[IdentityConstraint]
+  implicit val IdentityConstraint = new SymbolSpace[IdentityConstraint] {
+    type SymbolType = IdentityConstraint
+    def name = "identity constraint"
+  }
   //implicit val Notation extends SymbolSpace[Notation]
 }
 
