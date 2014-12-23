@@ -1,6 +1,6 @@
 package eu.swdev.xml.schema
 
-import java.net.URI
+import eu.swdev.xml.name.QName
 
 /**
   */
@@ -48,8 +48,10 @@ sealed trait Particle {
 
 sealed trait GroupParticle extends Particle {
   def nested: Seq[Particle]
-  def withOccurs(o: Occurs): this.type
+  def withOccurs(o: Occurs): GroupParticle
 }
+
+sealed trait NestedParticle extends Particle
 
 trait SeqAllEffectiveTotalRange { self: GroupParticle =>
 
@@ -63,11 +65,11 @@ trait SeqAllEffectiveTotalRange { self: GroupParticle =>
 
 }
 
-sealed case class SeqGroupParticle(occurs: Occurs, nested: Seq[Particle]) extends GroupParticle with SeqAllEffectiveTotalRange {
+sealed case class SeqGroupParticle(occurs: Occurs, nested: Seq[Particle]) extends GroupParticle with NestedParticle with SeqAllEffectiveTotalRange {
   override def withOccurs(o: Occurs) = copy(occurs = o)
 }
 
-sealed case class ChoiceGroupParticle(occurs: Occurs, nested: Seq[Particle]) extends GroupParticle {
+sealed case class ChoiceGroupParticle(occurs: Occurs, nested: Seq[Particle]) extends GroupParticle with NestedParticle {
   // 3.8.6.6
   override def effectiveTotalRange: Occurs = {
     val nestedRanges = nested.map(_.effectiveTotalRange)
@@ -82,7 +84,13 @@ sealed case class AllGroupParticle(occurs: Occurs, nested: Seq[Particle]) extend
   override def withOccurs(o: Occurs) = copy(occurs = o)
 }
 
-case class ElemDecl()
+case class ElemDecl(occurs: Occurs, name: QName, var elemType: Type) extends NestedParticle {
+  override def effectiveTotalRange: Occurs = occurs
+}
+
+case class ElemWildcard(occurs: Occurs, wildcard: Wildcard) extends NestedParticle {
+  override def effectiveTotalRange: Occurs = occurs
+}
 
 // 3.8.6.5 & 3.8.6.6
 case class EffectiveTotalRange(min: Int, max: MaxOccurs)

@@ -27,7 +27,7 @@ object JobMod {
         case Await(ref, rec) => Await(ref, rec andThen go)
         case Done(a, s1) => f(a).run(s1)
         case Abort(state) => Abort(state)
-        case Created(o, next) => Created(o, go(next))
+        case Define(o, stage, next) => Define(o, stage, go(next))
       }
 
       go(run(state))
@@ -74,14 +74,14 @@ object JobMod {
       case Await(ref, rec) => Await(ref, rec andThen Step.lift(f))
       case Done(a, state) => Done(f(a), state)
       case Abort(state) => Abort(state)
-      case Created(o, next) => Created(o, next map f)
+      case Define(o, stage, next) => Define(o, stage, next map f)
     }
 
     def filter(f: A => Boolean): Step[A] = this match {
       case Await(ref, rec) => Await(ref, rec andThen (step => step.filter(f)))
       case Done(a, state) => if (f(a)) Done(a, state) else Abort(state)
       case Abort(state) => Abort(state)
-      case Created(o, next) => Created(o, next filter f)
+      case Define(o, stage, next) => Define(o, stage, next filter f)
     }
 
   }
@@ -96,7 +96,7 @@ object JobMod {
 
   case class Abort(state: State) extends Step[Nothing]
   
-  case class Created[A, O <: SchemaTopComponent](value: O, next: Step[A]) extends Step[A]
+  case class Define[A, O <: SchemaTopComponent](value: O, stage: Stage, next: Step[A]) extends Step[A]
   
   sealed trait Ref[X] {
     def symbolSpace: SymbolSpace[X]
@@ -107,6 +107,7 @@ object JobMod {
   sealed case class GlobalRef[X](symbolSpace: SymbolSpace[X], qName: QName, schemaLocation: Option[String]) extends Ref[X]
 
   sealed trait Stage
+
   case object Created extends Stage
   case object Completed extends Stage
 
@@ -150,7 +151,7 @@ object JobMod {
     }}
   }
 
-  def created[O <: SchemaTopComponent](a: O): Job[Unit] = Job { state => Created(a, Done((), state)) }
+  def created[O <: SchemaTopComponent](a: O): Job[Unit] = Job { state => Define(a, Created, Done((), state)) }
 
   def getConf: Job[JobConf] = Job { state => Done(state.config, state) }
   
@@ -161,6 +162,11 @@ object JobMod {
 
   // 3.4.1
   def complexTypeJob(cmp: ComplexTypeElem): Job[ComplexType] = for {
+    cct <- createComplexTypeJob(cmp)
+    _ <- cct._2 // complete the complex type
+  } yield cct._1
+
+  def createComplexTypeJob(cmp: ComplexTypeElem): Job[(ComplexType, Job[Job[Unit]])] = for {
     conf <- getConf
     typeName <- typeName(cmp.name)
     baseType <- await[Type](cmp.content.base, Created)
@@ -172,8 +178,7 @@ object JobMod {
     (contentModel, completeContentModelJob) <- contentModelJob(cmp.content, baseType, cmp.mixed)
     ct = ComplexType(typeName, baseType, cmp.content.derivationMethod, attrs, contentModel, cmp.abstrct.value, finl, block, assertions)
     _ <- created(ct)
-    _ <- completeContentModelJob
-  } yield ct
+  } yield (ct, completeContentModelJob)
 
   // 3.4.2.4 & 3.4.2.5
   def mergeWithInheritedAttrs(attrs: AttrsModel, baseType: Type, derivationMethod: CtDerivationCtrl): Job[AttrsModel] = {
@@ -240,12 +245,12 @@ object JobMod {
     Assertion(ae.test, xPathDefaultNamespace)
   }
 
-  def contentModelJob(content: ComplexTypeContentCmp, baseType: Type, ctMixed: Option[Boolean]): Job[(ContentType, Job[Unit])] = {
+  def contentModelJob(content: ComplexTypeContentCmp, baseType: Type, ctMixed: Option[Boolean]): Job[(ContentType, Job[Job[Unit]])] = {
     content match {
       case c: ComplexContentCmp => complexContentJob(c, baseType, ctMixed)
       case c: SimpleContentElem => for {
         simpleTypeDefinition <- simpleTypeDefinitionJob(c.derivation)
-      } yield (SimpleContentType(simpleTypeDefinition), Job.unit(()))
+      } yield (SimpleContentType(simpleTypeDefinition), Job.unit(Job.unit(())))
     }
   }
 
@@ -294,16 +299,16 @@ object JobMod {
   }
 
   // 3.4.2.3.3
-  def complexContentJob(complexContent: ComplexContentCmp, baseType: Type, ctMixed: Option[Boolean]): Job[(ComplexContentType, Job[Unit])] = {
+  def complexContentJob(complexContent: ComplexContentCmp, baseType: Type, ctMixed: Option[Boolean]): Job[(ComplexContentType, Job[Job[Unit]])] = {
     // 1
     val effectiveMixed: Boolean = complexContent.mixed.orElse(ctMixed).getOrElse(false)
     // 2
     val explicitContent: Option[TypeDefParticleCmp] = complexContent.typeDefParticle.filter {
       // 2.1.2
-      case p: AllElem if (p.particles.isEmpty) => false
-      case p: SequenceElem if (p.particles.isEmpty) => false
+      case p: AllElem if (p.nested.isEmpty) => false
+      case p: SequenceElem if (p.nested.isEmpty) => false
       // 2.1.3
-      case p: ChoiceElem if (p.occurs.min == 0 && p.particles.isEmpty) => false
+      case p: ChoiceElem if (p.occurs.min == 0 && p.nested.isEmpty) => false
       // 2.1.4
       case t: TypeDefParticleCmp if (t.occurs.max == MaxOccurs.zero) => false
       case _ => true
@@ -318,21 +323,21 @@ object JobMod {
     })
 
     //
-    def contentTypeBasedOnDerivedTypeOnly: (Job[ComplexContentType], Job[Unit]) = {
-      effectiveContent.fold {
+    def contentTypeBasedOnDerivedTypeOnly: Job[(ComplexContentType, Job[Job[Unit]])] = {
+      effectiveContent.fold[Job[(ComplexContentType, Job[Job[Unit]])]] {
         // 4.1.1
-        (Job.unit[ComplexContentType](EmptyContentType), Job.unit(()))
+        Job.unit((EmptyContentType, Job.unit(Job.unit(()))))
       } {
         // 4.1.2
-        tdpc => {
-          val (gj, completionJob) = groupJob(tdpc)
-          (gj.map(ElementsContentType(_, effectiveMixed, None)), completionJob)
+        typeDefParticleCmp => {
+          val gj: Job[(GroupParticle, Job[Job[Unit]])] = groupJob(typeDefParticleCmp)
+          gj.map(t => (ElementsContentType(t._1, effectiveMixed, None), t._2))
         }
       }
     }
 
     // 4
-    val (explicitContentTypeJob, completionJob) = complexContent.derivationMethod match {
+    val explicitContentTypeJob: Job[(ComplexContentType, Job[Job[Unit]])] = complexContent.derivationMethod match {
       // 4.1
       case Relation.Restriction => contentTypeBasedOnDerivedTypeOnly
 
@@ -349,78 +354,80 @@ object JobMod {
           // 4.2.1
           case baseContentType: SimpleContentType => contentTypeBasedOnDerivedTypeOnly
           // 4.2.2
-          case baseContentType: ElementsContentType if (effectiveContent.isEmpty) => (Job.unit(baseContentType), Job.unit(()))
-            // 4.2.3
+          case baseContentType: ElementsContentType if (effectiveContent.isEmpty) => Job.unit((baseContentType), Job.unit(Job.unit(())))
+          // 4.2.3
           case baseContentType: ElementsContentType => {
 
-            val (particleJob, completionJob) = baseContentType.group match {
+            val particleJob: Job[(GroupParticle, Job[Job[Unit]])] = baseContentType.group match {
               // 4.2.3.1
-              case baseParticle: AllGroupParticle if (explicitContent.isEmpty) => (Job.unit(baseParticle), Job.unit(()))
+              case baseParticle: AllGroupParticle if (explicitContent.isEmpty) => Job.unit(baseParticle, Job.unit(Job.unit(())))
               // 4.2.3.2 & 4.2.3.3
               case baseParticle: AllGroupParticle if (explicitContent.isDefined) => {
-                val (gj, completionJob) = groupJob(effectiveContent.get)
-                (gj.map(_ match {
+                groupJob(effectiveContent.get).map {
                   // 4.2.3.2
-                  case groupParticle: AllGroupParticle => AllGroupParticle(Occurs(effectiveContent.get.occurs.min, MaxOccurs.one), baseParticle.nested ++ groupParticle.nested)
+                  case (groupParticle: AllGroupParticle, completionJob) => (AllGroupParticle(Occurs(effectiveContent.get.occurs.min, MaxOccurs.one), baseParticle.nested ++ groupParticle.nested), completionJob)
                   // 4.2.3.3
-                  case groupParticle => SeqGroupParticle(Occurs.once, Seq(baseParticle, groupParticle))
-                }), completionJob)
+                  case (groupParticle, completionJob) => (SeqGroupParticle(Occurs.once, Seq(baseParticle, groupParticle)), completionJob)
+                }
               }
-
               // 4.2.3.3
               case baseParticle => {
-                val (gj, completionJob) = groupJob(effectiveContent.get)
-                (gj.map(groupParticle => SeqGroupParticle(Occurs.once, Seq(baseParticle, groupParticle))), completionJob)
+                groupJob(effectiveContent.get).map {
+                  case (groupParticle, completionJob) => (SeqGroupParticle(Occurs.once, Seq(baseParticle, groupParticle)), completionJob)
+                }
               }
 
             }
 
-            (particleJob.map(ElementsContentType(_, effectiveMixed, baseContentType.open)), completionJob)
+            particleJob.map {
+              case (groupParticle, completionJob) => (ElementsContentType(groupParticle, effectiveMixed, baseContentType.open), completionJob)
+            }
 
           }
-
         }
 
       }
     }
 
-    val contentTypeJob: Job[ComplexContentType] = explicitContentTypeJob >>= {
-      explicitContentType => for {
-        conf <- getConf
-      } yield {
-        // 5
-        val optWildcardElement: Option[OpenContentCmp] = complexContent.openContent.orElse(conf.schemaElem.defaultOpenContent.filter(doc => {
-          !explicitContentType.isEmpty || doc.appliesToEmpty.value
-        }))
-        optWildcardElement.fold {
-          // 6.1
-          explicitContentType
-        } {
-          wildcardElement => {
-            if (wildcardElement.mode.value == OpenContentMode.None) {
-              // 6.1
-              explicitContentType
-            } else {
-              // 6.2
-              val w: Wildcard = wildcardElement.optAny.fold {
-                // there is no <any> element inside openContent
-                // -> use a wildcard that corresponds to an empty <any> element
-                Wildcard(NamespaceConstraint.Any(DisallowedNames.empty), ProcessContents.Strict)
-              } {
-                any => Wildcard(namespaceConstraint(any, conf.schemaTargetNamespace), any.processContents.value)
-              }
-              explicitContentType match {
-                case EmptyContentType => {
-                  val openContent = OpenContent(wildcardElement.mode.value, w)
-                  ElementsContentType(SeqGroupParticle(Occurs(1, MaxOccurs.one), Seq()), false, Some(openContent))
+    explicitContentTypeJob >>= {
+      case (explicitContentType, completionJob) => {
+        for {
+          conf <- getConf
+        } yield {
+          // 5
+          val optWildcardElement: Option[OpenContentCmp] = complexContent.openContent.orElse(conf.schemaElem.defaultOpenContent.filter(doc => {
+            !explicitContentType.isEmpty || doc.appliesToEmpty.value
+          }))
+          optWildcardElement.fold {
+            // 6.1
+            (explicitContentType, completionJob)
+          } {
+            wildcardElement => {
+              if (wildcardElement.mode.value == OpenContentMode.None) {
+                // 6.1
+                (explicitContentType, completionJob)
+              } else {
+                // 6.2
+                val w: Wildcard = wildcardElement.optAny.fold {
+                  // there is no <any> element inside openContent
+                  // -> use a wildcard that corresponds to an empty <any> element
+                  Wildcard(NamespaceConstraint.Any(DisallowedNames.empty), ProcessContents.Strict)
+                } {
+                  any => Wildcard(namespaceConstraint(any, conf.schemaTargetNamespace), any.processContents.value)
                 }
-                case explicitContentType: ElementsContentType => {
-                  val openContent = explicitContentType.open.fold {
-                    OpenContent(wildcardElement.mode.value, w)
-                  } {
-                    openContent => OpenContent(wildcardElement.mode.value, Wildcard(openContent.wildcard.namespaceConstraint.union(w.namespaceConstraint), w.processContents))
+                explicitContentType match {
+                  case EmptyContentType => {
+                    val openContent = OpenContent(wildcardElement.mode.value, w)
+                    (ElementsContentType(SeqGroupParticle(Occurs(1, MaxOccurs.one), Seq()), false, Some(openContent)), completionJob)
                   }
-                  explicitContentType.copy(open = Some(openContent))
+                  case explicitContentType: ElementsContentType => {
+                    val openContent = explicitContentType.open.fold {
+                      OpenContent(wildcardElement.mode.value, w)
+                    } {
+                      openContent => OpenContent(wildcardElement.mode.value, Wildcard(openContent.wildcard.namespaceConstraint.union(w.namespaceConstraint), w.processContents))
+                    }
+                    (explicitContentType.copy(open = Some(openContent)), completionJob)
+                  }
                 }
               }
             }
@@ -428,8 +435,6 @@ object JobMod {
         }
       }
     }
-
-    contentTypeJob.map((_, completionJob))
   }
   
   // 3.10.2.2
@@ -465,14 +470,82 @@ object JobMod {
 
   }
 
-  def groupJob(particleCmp: TypeDefParticleCmp): (Job[GroupParticle], Job[Unit]) = {
+  def groupJob[X](cmp: GroupParticleCmp)(f: (Occurs, Seq[Particle]) => X): Job[(X, Job[Job[Unit]])] = {
+    nestedParticlesJob(cmp.nested).map {
+      case (nestedParticles, completionJob) => (f(cmp.occurs, nestedParticles), completionJob)
+    }
+  }
+  
+  def groupJob(particleCmp: TypeDefParticleCmp): Job[(GroupParticle, Job[Job[Unit]])] = {
     particleCmp match {
-      case cmp: AllElem => ???
-      case cmp: ChoiceElem => ???
-      case cmp: SequenceElem => ???
+      case cmp: AllElem => groupJob(cmp)(AllGroupParticle(_, _))
+      case cmp: ChoiceElem => groupJob(cmp)(ChoiceGroupParticle(_, _))
+      case cmp: SequenceElem => groupJob(cmp)(SeqGroupParticle(_, _))
       case cmp: GroupRefElem => {
-        (await[GroupParticle](cmp.ref).map(_.withOccurs(cmp.occurs)), Job.unit(()))
+        await[GroupParticle](cmp.ref).map(gp => (gp.withOccurs(cmp.occurs), Job.unit(Job.unit(()))))
       }
+    }
+  }
+
+  def nestedParticlesJob(nested: Seq[NestedParticleCmp]): Job[(Seq[NestedParticle], Job[Job[Unit]])] = {
+    val seq: Seq[Job[(NestedParticle, Job[Job[Unit]])]] = nested.map(nestedParticleJob(_))
+
+    val sequenced: Job[Seq[(NestedParticle, Job[Job[Unit]])]] = Job.sequence(seq)
+
+    sequenced.map(tupelSeq => {
+      (tupelSeq.map(_._1), Job.sequence(tupelSeq.map(_._2)).map(_ => Job.unit(())))
+    })
+  }
+
+  def nestedParticleJob(cmp: NestedParticleCmp): Job[(NestedParticle, Job[Job[Unit]])] = {
+    cmp match {
+      case cmp: AnyElem => for {
+        conf <- getConf
+      } yield (ElemWildcard(cmp.occurs, wildcard(cmp, conf.schemaTargetNamespace)), Job.unit(Job.unit(())))
+      case cmp: ChoiceElem => groupJob(cmp)(ChoiceGroupParticle(_, _))
+      case cmp: ElementElem => elemDeclJob(cmp)
+      case cmp: GroupRefElem => {
+        await[GroupParticle](cmp.ref) >>= {
+          case groupParticle: NestedParticle => Job.unit((groupParticle, Job.unit(Job.unit(()))))
+          case groupParticle => abort(s"referenced group $groupParticle can not be nested inside another group")
+        }
+      }
+      case cmp: SequenceElem => groupJob(cmp)(SeqGroupParticle(_, _))
+    }
+  }
+
+  // 3.3.2.1
+  def elemDeclJob(cmp: ElementElem): Job[(ElemDecl, Job[Job[Unit]])] = {
+    (cmp.name, cmp.ref) match {
+      case (Some(name), _) => {
+        for {
+          conf <- getConf
+        } yield {
+          val elemDecl = ElemDecl(cmp.occurs, QNameFactory.caching.apply(conf.schemaTargetNamespace, LocalName(name)), null)
+          val continuationJob: Job[Job[Unit]] = for {
+            (elementType: Type, typeCompletionJob: Job[Unit]) <- cmp.inlinedType.map {
+              // 1
+              case Left(simpleTypeElem) => simpleTypeJob(simpleTypeElem).map((_, Job.unit()))
+              case Right(complexTypeElem) => createComplexTypeJob(complexTypeElem)
+            }.orElse {
+              // 2
+              cmp.refType.map { qn => await[Type](qn, Created)}
+            }.orElse {
+              // 3
+              cmp.subsitutionGroup.map { qns =>
+                // the referenced element declaration must be completed because its element type is accessed
+                await[ElemDecl](qns.head).map(ed => (ed.elemType, Job.unit(())))
+              }
+            }.getOrElse(Job.unit((anyType, Job.unit(()))))
+          } yield {
+            elemDecl.elemType = elementType
+            typeCompletionJob
+          }
+          (elemDecl, continuationJob)
+        }
+      }
+      case (_, Some(ref)) => await[ElemDecl](ref).map((_, Job.unit(Job.unit())))
+      case _ => abort(s"missing name or ref attribute on element declaration")
     }
   }
 

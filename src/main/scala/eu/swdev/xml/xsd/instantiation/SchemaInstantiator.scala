@@ -143,7 +143,7 @@ trait SchemaInstantiator { self: SchemaStore =>
           }
         }
         case Done(a, jobState) => {
-          val newState = stateAfterCreationOrCompletion(a, Completed, state)
+          val newState = stateAfterDefinition(a, Completed, state)
           newState.copy(
             log = log.concat(jobState.log, newState.log)
           )
@@ -151,22 +151,28 @@ trait SchemaInstantiator { self: SchemaStore =>
         case Abort(jobState) => {
           state.copy(log = log.concat(jobState.log, state.log))
         }
-        case Created(o, next) => {
-          val newState = stateAfterCreationOrCompletion(o, Created, state)
+        case Define(o, stage, next) => {
+          val newState = stateAfterDefinition(o, stage, state)
           drive(next, newState)
         }
       }
     }
 
-    def stateAfterCreationOrCompletion[C <: SchemaTopComponent](c: C, stage: Stage, state: InstantiationState): InstantiationState = {
-      val t = localNameAndSymbolSpace(c)
-      val ova: Option[VAL[C]] = state.localWaiting.get(t._1, stage)(t._2)
-      val newSteps: Seq[Step[SchemaTopComponent]] = ova.map(_.map(_(Some(c)))).getOrElse(Seq())
-      val newLocalWaiting = state.localWaiting.-(t._1, stage)(t._2)
-      state.copy(
-        results = state.results.+(t._1, stage, c)(t._2),
-        localWaiting = newLocalWaiting,
-        steps = newSteps ++ state.steps)
+    def stateAfterDefinition[C <: SchemaTopComponent](c: C, stageX: Stage, stateX: InstantiationState): InstantiationState = {
+      def go(stage: Stage, state: InstantiationState): InstantiationState = {
+        val t = localNameAndSymbolSpace(c)
+        val ova: Option[VAL[C]] = state.localWaiting.get(t._1, stage)(t._2)
+        val newSteps: Seq[Step[SchemaTopComponent]] = ova.map(_.map(_(Some(c)))).getOrElse(Seq())
+        val newLocalWaiting = state.localWaiting.-(t._1, stage)(t._2)
+        state.copy(
+          results = state.results.+(t._1, stage, c)(t._2),
+          localWaiting = newLocalWaiting,
+          steps = newSteps ++ state.steps)
+      }
+      stageX match {
+        case Created => go(Created, stateX)
+        case Completed => go(Completed, go(Created, stateX))
+      }
     }
 
     def localNameAndSymbolSpace[A <: SchemaTopComponent](a: A): (LocalName, SymbolSpace[A]) = {
