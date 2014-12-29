@@ -34,7 +34,7 @@ object Schema {
       decimalType + integerType + longType + intType + shortType + byteType +
       nonNegativeIntegerType + nonPositiveIntegerType + positiveIntegerType + negativeIntegerType +
       unsignedLongType + unsignedIntType + unsignedShortType + unsignedByteType +
-      stringType + normalizedStringType +
+      stringType + normalizedStringType + tokenType + languageType + nameType + ncNameType + entityType + idType + idRefType + nmTokenType +
       qNameType
   )
 }

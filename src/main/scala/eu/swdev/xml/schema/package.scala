@@ -52,7 +52,23 @@ package object schema {
 
   //
 
-  val normalizedStringType = StringType(NORMALIZED_STRING, stringType, Facets.withWspCollapse)
+  val normalizedStringType = StringType(NORMALIZED_STRING, stringType, Facets.withWspReplace)
+
+  val tokenType = StringType(TOKEN, normalizedStringType, Facets.withWspCollapse)
+
+  val languageType = StringType(LANGUAGE, tokenType, Facets.withWspCollapse[AtomicVal[String]].pattern.checkAndSet(Seq("[a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})*".r)).right.get)
+
+  val nameType = StringType(NAME, tokenType, Facets.withWspCollapse[AtomicVal[String]].pattern.checkAndSet(Seq("""[\p{javaLowerCase}\p{javaUpperCase}_:][-.\p{Digit}\p{javaLowerCase}\p{javaUpperCase}_:]*""".r)).right.get)
+
+  val ncNameType = StringType(NC_NAME, nameType, Facets.withWspCollapse[AtomicVal[String]].pattern.checkAndSet(Seq("""[\p{javaLowerCase}\p{javaUpperCase}_][-.\p{Digit}\p{javaLowerCase}\p{javaUpperCase}_]*""".r)).right.get)
+
+  val entityType = StringType(ENTITY, ncNameType, Facets.withWspCollapse[AtomicVal[String]].pattern.checkAndSet(Seq("""[\p{javaLowerCase}\p{javaUpperCase}_][-.\p{Digit}\p{javaLowerCase}\p{javaUpperCase}_]*""".r)).right.get)
+
+  val idType = StringType(ID, ncNameType, Facets.withWspCollapse[AtomicVal[String]].pattern.checkAndSet(Seq("""[\p{javaLowerCase}\p{javaUpperCase}_][-.\p{Digit}\p{javaLowerCase}\p{javaUpperCase}_]*""".r)).right.get)
+
+  val idRefType = StringType(IDREF, ncNameType, Facets.withWspCollapse[AtomicVal[String]].pattern.checkAndSet(Seq("""[\p{javaLowerCase}\p{javaUpperCase}_][-.\p{Digit}\p{javaLowerCase}\p{javaUpperCase}_]*""".r)).right.get)
+
+  val nmTokenType = StringType(NAME, tokenType, Facets.withWspCollapse[AtomicVal[String]].pattern.checkAndSet(Seq("""[-.\p{Digit}\p{javaLowerCase}\p{javaUpperCase}_:]+""".r)).right.get)
 
   def unionVal[T <: AtomicOrListType](memberTypes: List[T])(lexicalRep: String, ns: Namespaces): Either[String, T#VAL] =
     memberTypes.iterator.map(at => Try { at.createVal(lexicalRep, ns) }).find(_.isSuccess).map(_.get).getOrElse(throw new IllegalArgumentException(s"invalid value: $lexicalRep; non of the union member types could parse the value"))

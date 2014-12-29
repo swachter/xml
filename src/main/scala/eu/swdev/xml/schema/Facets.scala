@@ -34,6 +34,8 @@ object Facets {
 
   def withWspCollapse[X <: SimpleVal]: Facets[X] = empty[X].whitespace.checkAndSet(WhitespaceProcessing.Collapse).right.get
 
+  def withWspReplace[X <: SimpleVal]: Facets[X] = empty[X].whitespace.checkAndSet(WhitespaceProcessing.Replace).right.get
+
   /**
    * Operation for checking if setting a facet value would be a restriction and setting that value.
    *
