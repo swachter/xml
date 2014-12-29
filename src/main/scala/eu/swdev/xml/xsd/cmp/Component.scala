@@ -5,6 +5,7 @@ import java.net.URI
 import eu.swdev.etc.NotNothing
 import eu.swdev.xml.base.{SomeValue, WhitespaceProcessing, Location}
 import eu.swdev.xml.name.{Namespaces, QName}
+import eu.swdev.xml.schema.Form.Qualified
 import eu.swdev.xml.schema._
 
 import scala.reflect.ClassTag
@@ -65,6 +66,8 @@ sealed trait TypeDefParticleCmp extends ParticleCmp {
 sealed trait GroupParticleCmp extends TypeDefParticleCmp {
   def nested: Seq[NestedParticleCmp]
 }
+
+sealed trait ChoiceOrSeqCmp extends GroupParticleCmp with NestedParticleCmp
 
 //
 
@@ -135,24 +138,30 @@ case class AnyElem(loc: Location, id: Option[String], annotation: Option[Annotat
 
 case class AppInfoElem(loc: Location, source: Option[String], rawXml: String, openAttrs: Map[QName, String])
 
-sealed trait AttributeElem extends ValueConstraintCmp {
+sealed trait AttributeCmp extends ValueConstraintCmp {
   def loc: Location
   def id: Option[String]
   def annotation: Option[AnnotationElem]
   def name: Option[String]
+  def ref: Option[QName]
   def refType: Option[QName]
   def inheritable: Option[Boolean]
   def simpleType: Option[SimpleTypeElem]
+  def form: Option[Form]
 }
 
-case class AttributeElemG(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Some[String], refType: Option[QName], default: Option[String], fixed: Option[String], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends AttributeElem with SchemaTopGroupElem
-case class AttributeElemL(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], use: SomeValue[Use], default: Option[String], fixed: Option[String], form: Option[Form], targetNamespace: Option[URI], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends AttributeElem
+case class AttributeElemG(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Some[String], refType: Option[QName], default: Option[String], fixed: Option[String], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends AttributeCmp with SchemaTopGroupElem {
+  override def ref: Option[QName] = None
+  override def form: Option[Form] = Some(Qualified)
+}
+
+case class AttributeElemL(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: Option[String], ref: Option[QName], refType: Option[QName], use: SomeValue[Use], default: Option[String], fixed: Option[String], form: Option[Form], targetNamespace: Option[URI], inheritable: Option[Boolean], simpleType: Option[SimpleTypeElem], openAttrs: Map[QName, String]) extends AttributeCmp
 
 case class AttributeGroupDefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], name: String, attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], openAttrs: Map[QName, String]) extends RedefinableGroupElem
 
 case class AttributeGroupRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], ref: QName, openAttrs: Map[QName, String])
 
-case class ChoiceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], occurs: Occurs, nested: Seq[NestedParticleCmp], openAttrs: Map[QName, String]) extends NestedParticleCmp with GroupParticleCmp
+case class ChoiceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], occurs: Occurs, nested: Seq[NestedParticleCmp], openAttrs: Map[QName, String]) extends ChoiceOrSeqCmp
 
 case class ComplexContentAbbrev(loc: Location, openContent: Option[OpenContentElem], typeDefParticle: Option[TypeDefParticleCmp], attrs: Seq[Either[AttributeElemL, AttributeGroupRefElem]], anyAttribute: Option[AnyAttributeElem], asserts: Seq[AssertElem]) extends ComplexContentCmp {
   override def base: QName = XsNames.ANY_TYPE
@@ -221,7 +230,7 @@ case class SchemaElem(loc: Location, id: Option[String], targetNamespace: Option
 
 case class SelectorElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[XPathDefaultNamespace], openAttrs: Map[QName, String])
 
-case class SequenceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], occurs: Occurs, nested: Seq[NestedParticleCmp], openAttrs: Map[QName, String]) extends NestedParticleCmp with GroupParticleCmp
+case class SequenceElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], occurs: Occurs, nested: Seq[NestedParticleCmp], openAttrs: Map[QName, String]) extends ChoiceOrSeqCmp
 
 case class SimpleContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], derivation: SimpleDerivationCmp, openAttrs: Map[QName, String]) extends ComplexTypeContentCmp {
   override def base: QName = derivation.base

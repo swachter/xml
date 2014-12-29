@@ -73,6 +73,14 @@ sealed case class IntValue(typeName: QName, data: Int) extends AtomicValue {
   type Data = Int
 }
 
+sealed case class ShortValue(typeName: QName, data: Short) extends AtomicValue {
+  type Data = Short
+}
+
+sealed case class ByteValue(typeName: QName, data: Byte) extends AtomicValue {
+  type Data = Byte
+}
+
 sealed case class StringValue(typeName: QName, data: String) extends AtomicValue {
   type Data = String
 }

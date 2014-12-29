@@ -23,11 +23,11 @@ trait SchemaInstantiator { self: SchemaStore =>
       top <- schema.schemaTop.collect { case Left(stge: SchemaTopGroupElem) => stge }
     } yield {
       top match {
-        case e: AttributeElemG => ???
-        case e: AttributeGroupDefElem => ???
+        case e: AttributeElemG => attrDeclJob(e)
+        case e: AttributeGroupDefElem => attrGroupJob(e)
         case e: ComplexTypeElem => complexTypeJob(e)
-        case e: ElementElem => ???
-        case e: GroupDefElem => ???
+        case e: ElementElem => elemDeclJob(e)
+        case e: GroupDefElem => groupDefJob(e)
         case e: NotationElem => ???
         case e: SimpleTypeElem => simpleTypeJob(e)
       }
@@ -179,7 +179,11 @@ trait SchemaInstantiator { self: SchemaStore =>
       a match {
         case c: ComplexType => (c.name.localName, SymbolSpace.Type.asInstanceOf[SymbolSpace[A]])
         case c: SimpleType => (c.name.localName, SymbolSpace.Type.asInstanceOf[SymbolSpace[A]])
-
+        case c: ElemDecl => (c.name.localName, SymbolSpace.ElemDecl.asInstanceOf[SymbolSpace[A]])
+        case c: GroupDef => (c.name.localName, SymbolSpace.Group.asInstanceOf[SymbolSpace[A]])
+        case c: AttrDecl => (c.name.localName, SymbolSpace.AttrDecl.asInstanceOf[SymbolSpace[A]])
+        case c: AttrGroup => (c.name.localName, SymbolSpace.AttrGroup.asInstanceOf[SymbolSpace[A]])
+        case c: IdentityConstraint => (c.name.localName, SymbolSpace.IdentityConstraint.asInstanceOf[SymbolSpace[A]])
       }
     }
 

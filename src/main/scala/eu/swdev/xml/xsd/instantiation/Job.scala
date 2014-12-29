@@ -369,13 +369,13 @@ object JobMod {
                   // 4.2.3.2
                   case (groupParticle: AllGroupParticle, completionJob) => (AllGroupParticle(Occurs(effectiveContent.get.occurs.min, MaxOccurs.one), baseParticle.nested ++ groupParticle.nested), completionJob)
                   // 4.2.3.3
-                  case (groupParticle, completionJob) => (SeqGroupParticle(Occurs.once, Seq(baseParticle, groupParticle)), completionJob)
+                  case (groupParticle, completionJob) => (SeqParticle(Occurs.once, Seq(baseParticle, groupParticle)), completionJob)
                 }
               }
               // 4.2.3.3
               case baseParticle => {
                 groupJob(effectiveContent.get).map {
-                  case (groupParticle, completionJob) => (SeqGroupParticle(Occurs.once, Seq(baseParticle, groupParticle)), completionJob)
+                  case (groupParticle, completionJob) => (SeqParticle(Occurs.once, Seq(baseParticle, groupParticle)), completionJob)
                 }
               }
 
@@ -420,7 +420,7 @@ object JobMod {
                 explicitContentType match {
                   case EmptyContentType => {
                     val openContent = OpenContent(wildcardElement.mode.value, w)
-                    (ElementsContentType(SeqGroupParticle(Occurs(1, MaxOccurs.one), Seq()), false, Some(openContent)), completionJob)
+                    (ElementsContentType(SeqParticle(Occurs(1, MaxOccurs.one), Seq()), false, Some(openContent)), completionJob)
                   }
                   case explicitContentType: ElementsContentType => {
                     val openContent = explicitContentType.open.fold {
@@ -472,17 +472,32 @@ object JobMod {
 
   }
 
-  def groupJob[X](cmp: GroupParticleCmp)(f: (Occurs, Seq[Particle]) => X): Job[(X, Job[Job[Unit]])] = {
+  def groupDefJob(cmp: GroupDefElem): Job[GroupDef] = for {
+    (groupParticle, continuation1) <- groupJob(cmp.particle)
+    name <- qName(cmp.name)
+    groupDef = GroupDef(name, groupParticle)
+    _ <- define(groupDef, Created)
+    continuation2 <- continuation1
+    _ <- define(groupDef, Completed)
+    _ <- continuation2
+  } yield groupDef
+
+  def genericGroupJob[X](cmp: GroupParticleCmp)(f: (Occurs, Seq[Particle]) => X): Job[(X, Job[Job[Unit]])] = {
     nestedParticlesJob(cmp.nested).map {
       case (nestedParticles, completionJob) => (f(cmp.occurs, nestedParticles), completionJob)
     }
   }
-  
+
+//  def groupJob(cmp: ChoiceOrSeqCmp): Job[(ChoiceOrSeqParticle, Job[Job[Unit]])] = cmp match {
+//    case cmp: ChoiceElem => genericGroupJob(cmp)(ChoiceParticle(_, _))
+//    case cmp: SequenceElem => genericGroupJob(cmp)(SeqParticle(_, _))
+//  }
+
   def groupJob(particleCmp: TypeDefParticleCmp): Job[(GroupParticle, Job[Job[Unit]])] = {
     particleCmp match {
-      case cmp: AllElem => groupJob(cmp)(AllGroupParticle(_, _))
-      case cmp: ChoiceElem => groupJob(cmp)(ChoiceGroupParticle(_, _))
-      case cmp: SequenceElem => groupJob(cmp)(SeqGroupParticle(_, _))
+      case cmp: AllElem => genericGroupJob(cmp)(AllGroupParticle(_, _))
+      case cmp: ChoiceElem => genericGroupJob(cmp)(ChoiceParticle(_, _))
+      case cmp: SequenceElem => genericGroupJob(cmp)(SeqParticle(_, _))
       case cmp: GroupRefElem => {
         await[GroupParticle](cmp.ref).map(gp => (gp.withOccurs(cmp.occurs), Job.unit(Job.unit(()))))
       }
@@ -504,20 +519,28 @@ object JobMod {
       case cmp: AnyElem => for {
         conf <- getConf
       } yield (ElemWildcard(cmp.occurs, wildcard(cmp, conf.schemaTargetNamespace)), Job.unit(Job.unit(())))
-      case cmp: ChoiceElem => groupJob(cmp)(ChoiceGroupParticle(_, _))
-      case cmp: ElementElem => elemDeclJob(cmp)
+      case cmp: ChoiceElem => genericGroupJob(cmp)(ChoiceParticle(_, _))
+      case cmp: ElementElem => createElemDeclJob(cmp)
       case cmp: GroupRefElem => {
         await[GroupParticle](cmp.ref) >>= {
           case groupParticle: NestedParticle => Job.unit((groupParticle, Job.unit(Job.unit(()))))
           case groupParticle => abort(s"referenced group $groupParticle can not be nested inside another group")
         }
       }
-      case cmp: SequenceElem => groupJob(cmp)(SeqGroupParticle(_, _))
+      case cmp: SequenceElem => genericGroupJob(cmp)(SeqParticle(_, _))
     }
   }
 
+  def elemDeclJob(cmp: ElementElem): Job[ElemDecl] = for {
+    (elemDecl, continuation1) <- createElemDeclJob(cmp)
+    _ <- define(elemDecl, Created)
+    continuation2 <- continuation1
+    _ <- define(elemDecl, Completed)
+    _ <- continuation2
+  } yield elemDecl
+
   // 3.3.2.1
-  def elemDeclJob(cmp: ElementElem): Job[(ElemDecl, Job[Job[Unit]])] = {
+  def createElemDeclJob(cmp: ElementElem): Job[(ElemDecl, Job[Job[Unit]])] = {
     (cmp.name, cmp.ref) match {
       case (Some(name), _) => {
         for {
@@ -585,6 +608,11 @@ object JobMod {
   def selector(cmp: SelectorElem): String = cmp.xPath
   def field(cmp: FieldElem): String = cmp.xPath
 
+  def attrGroupJob(cmp: AttributeGroupDefElem): Job[AttrGroup] = for {
+    name <- qName(cmp.name)
+    attrsModel <- attrsModelJob2(cmp.attrs, cmp.anyAttribute)
+  } yield AttrGroup(name, attrsModel)
+
   def attrsModelJob(cmp: ComplexTypeContentCmp, defaultAttributes: Option[QName]): Job[AttrsModel] = {
     val job: Job[AttrsModel] = cmp match {
       case m: SimpleContentElem => attrsModelJob2(m.derivation.attrs, m.derivation.anyAttribute)
@@ -616,25 +644,7 @@ object JobMod {
   def attrsModelJob(ref: AttributeGroupRefElem): Job[AttrsModel] = await[AttrGroup](ref.ref) map (_.attrsModel)
 
   def attrsModelJob(ae: AttributeElemL): Job[AttrsModel] = {
-    val attrDeclJob: Job[AttrDecl] = (ae.name, ae.ref) match {
-      case (Some(an), _) => for {
-        conf <- getConf
-        simpleType <- ((ae.simpleType, ae.refType) match {
-          case (Some(simpleTypeElem), _) => simpleTypeJob(simpleTypeElem)
-          case (_, Some(ref)) => await[SimpleType](ref)
-          case _ => Job.unit(anySimpleType)
-        })
-      } yield {
-        val namespace = (ae.form, conf.schemaElem.attributeFormDefault.value) match {
-          case (Some(form), _) => if (form == Form.Qualified) conf.schemaTargetNamespace else NoNamespace
-          case (_, form) => if (form == Form.Qualified) conf.schemaTargetNamespace else NoNamespace
-        }
-        AttrDecl(QNameFactory.caching.apply(namespace, LocalName(an)), simpleType, None, ae.inheritable.getOrElse(false))
-      }
-      case (_, Some(ref)) => await[AttrDecl](ref)
-      case _ => abort(s"invalid attribute declaration at: ${ae.loc}")
-    }
-    attrDeclJob.map(attrDecl => {
+    attrDeclJob(ae).map(attrDecl => {
       AttrsModel(Map(attrDecl.name -> AttrUse(attrDecl, ae.use.value, valueConstraint(ae))), None)
     })
   }
@@ -653,28 +663,26 @@ object JobMod {
   }
 
   // 3.2.2.2
-  def attrDeclJob(ae: AttributeElemL): Job[AttrDecl] = (ae.name, ae.ref) match {
+  def attrDeclJob(cmp: AttributeCmp): Job[AttrDecl] = (cmp.name, cmp.ref) match {
     case (Some(an), _) => for {
       conf <- getConf
-      simpleType <- simpleTypeJob(ae)
+      simpleType <- simpleTypeJob(cmp)
     } yield {
-      val targetNamespace: Namespace = ae.targetNamespace.map(Namespace(_)).getOrElse {
-        if (ae.form.map(_ == Form.Qualified).getOrElse(false ) || (ae.form == None && conf.attributeFormDefault == Form.Qualified)) {
-          conf.schemaTargetNamespace
-        } else {
-          Namespace.NoNamespace
-        }
+      val namespace = (cmp.form, conf.schemaElem.attributeFormDefault.value) match {
+        case (Some(form), _) => if (form == Form.Qualified) conf.schemaTargetNamespace else NoNamespace
+        case (_, form) => if (form == Form.Qualified) conf.schemaTargetNamespace else NoNamespace
       }
-
-      AttrDecl(QNameFactory.caching(targetNamespace, LocalName(an)), simpleType, None, ae.inheritable.getOrElse(false))
+      AttrDecl(QNameFactory.caching.apply(namespace, LocalName(an)), simpleType, None, cmp.inheritable.getOrElse(false))
     }
-    case (_, Some(ar)) => await[AttrDecl](ar)
-    case _ => abort(s"attribute must have a name or a ref attribute at: ${ae.loc}")
+    case (_, Some(ref)) => await[AttrDecl](ref)
+    case _ => abort(s"attribute must have a name or a ref attribute at: ${cmp.loc}")
   }
 
   // 3.2.2.1 / 3.2.2.2
-  def simpleTypeJob(ae: AttributeElem): Job[SimpleType] = {
-    ae.refType.fold(ae.simpleType.fold(Job.unit[SimpleType](anySimpleType))(simpleTypeJob(_)))(qn => await[SimpleType](qn))
+  def simpleTypeJob(cmp: AttributeCmp): Job[SimpleType] = (cmp.simpleType, cmp.refType) match {
+    case (Some(simpleTypeElem), _) => simpleTypeJob(simpleTypeElem)
+    case (_, Some(ref)) => await[SimpleType](ref)
+    case _ => Job.unit(anySimpleType)
   }
 
   // part 2; 4.1.2
@@ -800,6 +808,10 @@ object JobMod {
           override def visit(tpe: LongType, p: Unit): Job[AtomicType] = restrict(tpe)(LongType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[Long]], whitespaceHandler)
 
           override def visit(tpe: IntType, p: Unit): Job[AtomicType] = restrict(tpe)(IntType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[Int]], whitespaceHandler)
+
+          override def visit(tpe: ShortType, p: Unit): Job[AtomicType] = restrict(tpe)(ShortType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[Short]], whitespaceHandler)
+
+          override def visit(tpe: ByteType, p: Unit): Job[AtomicType] = restrict(tpe)(ByteType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[Byte]], whitespaceHandler)
 
           override def visit(tpe: StringType, p: Unit): Job[AtomicType] = restrict(tpe)(StringType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), lengthHandler[AtomicVal[String]], whitespaceHandler)
 

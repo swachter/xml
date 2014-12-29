@@ -339,7 +339,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
   lazy val whitespace: Parser[WhitespaceElem] = facet("whiteSpace", (s: String) => s match {
     case "preserve" => success(WhitespaceProcessing.Preserve)
     case "replace" => success(WhitespaceProcessing.Replace)
-    case "collapse" => success(WhitespaceProcessing.Preserve)
+    case "collapse" => success(WhitespaceProcessing.Collapse)
     case s => fail(s"invalid whitepsace facet: $s")
   }) gmap Generic[WhitespaceElem]
 

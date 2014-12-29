@@ -19,6 +19,8 @@ object Xdm {
     def apply(tpe: IntegerType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(IntegerValue(tpe.name, _))
     def apply(tpe: LongType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(LongValue(tpe.name, _))
     def apply(tpe: IntType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(IntValue(tpe.name, _))
+    def apply(tpe: ShortType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(ShortValue(tpe.name, _))
+    def apply(tpe: ByteType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(ByteValue(tpe.name, _))
     def apply(tpe: StringType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(StringValue(tpe.name, _))
     def apply(tpe: QNameType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(QNameValue(tpe.name, _))
 
@@ -74,6 +76,8 @@ object Xdm {
     def visit(tpe: IntegerType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: LongType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: IntType, p: Unit) = createValueFunctions(tpe)
+    def visit(tpe: ShortType, p: Unit) = createValueFunctions(tpe)
+    def visit(tpe: ByteType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: StringType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: QNameType, p: Unit) = createValueFunctions(tpe)
   }

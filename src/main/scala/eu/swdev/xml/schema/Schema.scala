@@ -31,8 +31,10 @@ object Schema {
       anyType + anySimpleType + anyAtomicType + untypedAtomicType +
       booleanType +
       doubleType +
-      decimalType + integerType + longType + intType +
-      stringType +
+      decimalType + integerType + longType + intType + shortType + byteType +
+      nonNegativeIntegerType + nonPositiveIntegerType + positiveIntegerType + negativeIntegerType +
+      unsignedLongType + unsignedIntType + unsignedShortType + unsignedByteType +
+      stringType + normalizedStringType +
       qNameType
   )
 }

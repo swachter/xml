@@ -36,7 +36,7 @@ object AttrsModel {
 
 case class AttrUse(decl: AttrDecl, use: Use, constraint: Option[ValueConstraint])
 
-case class AttrDecl(name: QName, tpe: SimpleType, constraint: Option[ValueConstraint], inheritable: Boolean)
+case class AttrDecl(name: QName, tpe: SimpleType, constraint: Option[ValueConstraint], inheritable: Boolean) extends SchemaTopComponent
 
-case class AttrGroup(name: QName, attrsModel: AttrsModel)
+case class AttrGroup(name: QName, attrsModel: AttrsModel) extends SchemaTopComponent
 

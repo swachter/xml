@@ -32,7 +32,27 @@ object XsNames {
   val SHORT = xsTypeName("short")
   val BYTE = xsTypeName("byte")
 
+  val NEGATIVE_INTEGER = xsTypeName("negativeInteger")
+  val POSITIVE_INTEGER = xsTypeName("positiveInteger")
+
+  val NON_NEGATIVE_INTEGER = xsTypeName("nonNegativeInteger")
+  val NON_POSITIVE_INTEGER = xsTypeName("nonPositiveInteger")
+
+  val UNSIGNED_LONG = xsTypeName("unsignedLong")
+  val UNSIGNED_INT = xsTypeName("unsignedInt")
+  val UNSIGNED_SHORT = xsTypeName("unsignedShort")
+  val UNSIGNED_BYTE = xsTypeName("unsignedByte")
+
   val STRING = xsTypeName("string")
   val QNAME = xsTypeName("QName")
 
+  val NORMALIZED_STRING = xsTypeName("normalizedString")
+  val TOKEN = xsTypeName("token")
+  val LANGUAGE = xsTypeName("language")
+  val NAME = xsTypeName("Name")
+  val NC_NAME = xsTypeName("NCName")
+  val ENTITY = xsTypeName("ENTITY")
+  val ID = xsTypeName("ID")
+  val IDREF = xsTypeName("IDREF")
+  val NMTOKEN = xsTypeName("NMTOKEN")
 }

@@ -54,6 +54,8 @@ sealed trait GroupParticle extends Particle {
 
 sealed trait NestedParticle extends Particle
 
+sealed trait ChoiceOrSeqParticle extends GroupParticle with NestedParticle
+
 trait SeqAllEffectiveTotalRange { self: GroupParticle =>
 
   // 3.8.6.5
@@ -66,11 +68,11 @@ trait SeqAllEffectiveTotalRange { self: GroupParticle =>
 
 }
 
-sealed case class SeqGroupParticle(occurs: Occurs, nested: Seq[Particle]) extends GroupParticle with NestedParticle with SeqAllEffectiveTotalRange {
+sealed case class SeqParticle(occurs: Occurs, nested: Seq[Particle]) extends ChoiceOrSeqParticle with SeqAllEffectiveTotalRange {
   override def withOccurs(o: Occurs) = copy(occurs = o)
 }
 
-sealed case class ChoiceGroupParticle(occurs: Occurs, nested: Seq[Particle]) extends GroupParticle with NestedParticle {
+sealed case class ChoiceParticle(occurs: Occurs, nested: Seq[Particle]) extends ChoiceOrSeqParticle {
   // 3.8.6.6
   override def effectiveTotalRange: Occurs = {
     val nestedRanges = nested.map(_.effectiveTotalRange)
@@ -85,7 +87,7 @@ sealed case class AllGroupParticle(occurs: Occurs, nested: Seq[Particle]) extend
   override def withOccurs(o: Occurs) = copy(occurs = o)
 }
 
-case class ElemDecl(occurs: Occurs, name: QName, var elemType: Type, nillable: Boolean, abstrct: Boolean, valueConstraint: Option[ValueConstraint], identityConstraints: Seq[IdentityConstraint]) extends NestedParticle {
+case class ElemDecl(occurs: Occurs, name: QName, var elemType: Type, nillable: Boolean, abstrct: Boolean, valueConstraint: Option[ValueConstraint], identityConstraints: Seq[IdentityConstraint]) extends NestedParticle with SchemaTopComponent {
   override def effectiveTotalRange: Occurs = occurs
 }
 
@@ -95,3 +97,5 @@ case class ElemWildcard(occurs: Occurs, wildcard: Wildcard) extends NestedPartic
 
 // 3.8.6.5 & 3.8.6.6
 case class EffectiveTotalRange(min: Int, max: MaxOccurs)
+
+case class GroupDef(name: QName, particle: GroupParticle) extends SchemaTopComponent

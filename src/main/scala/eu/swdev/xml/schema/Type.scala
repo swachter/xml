@@ -336,6 +336,28 @@ sealed case class IntType(name: QName, baseType: Type, facets: Facets[AtomicVal[
   }
 }
 
+sealed case class ShortType(name: QName, baseType: Type, facets: Facets[AtomicVal[Short]]) extends NonStringAtomicType {
+  self =>
+  override type Data = Short
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = tryParse(string.toShort)
+  override def lexicalRep(data: Data): String = String.valueOf(data)
+  override type VAL = AtomicVal[Short]
+  override val accept = new Accept[AtomicTypeVisitor] {
+    override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
+  }
+}
+
+sealed case class ByteType(name: QName, baseType: Type, facets: Facets[AtomicVal[Byte]]) extends NonStringAtomicType {
+  self =>
+  override type Data = Byte
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = tryParse(string.toByte)
+  override def lexicalRep(data: Data): String = String.valueOf(data)
+  override type VAL = AtomicVal[Byte]
+  override val accept = new Accept[AtomicTypeVisitor] {
+    override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
+  }
+}
+
 sealed case class StringType(name: QName, baseType: Type, facets: Facets[AtomicVal[String]]) extends AtomicType {
   self =>
   override type Data = String
@@ -381,6 +403,10 @@ trait AtomicTypeVisitor[Result, Param] {
   def visit(tpe: LongType, p: Param): Result
 
   def visit(tpe: IntType, p: Param): Result
+
+  def visit(tpe: ShortType, p: Param): Result
+
+  def visit(tpe: ByteType, p: Param): Result
 
   def visit(tpe: StringType, p: Param): Result
 

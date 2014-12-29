@@ -23,6 +23,8 @@ class TypeTest extends FunSuite {
       override def visit(tpe: IntegerType, p: Unit): QName = tpe.name
       override def visit(tpe: LongType, p: Unit): QName = tpe.name
       override def visit(tpe: IntType, p: Unit): QName = tpe.name
+      override def visit(tpe: ShortType, p: Unit): QName = tpe.name
+      override def visit(tpe: ByteType, p: Unit): QName = tpe.name
       override def visit(tpe: StringType, p: Unit): QName = tpe.name
       override def visit(tpe: QNameType, p: Unit): QName = tpe.name
     }
