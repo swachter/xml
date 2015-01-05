@@ -15,6 +15,7 @@ object Xdm {
     def apply(tpe: untypedAtomicType.type ) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(UntypedAtomicValue(tpe.name, _))
     def apply(tpe: BooleanType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(BooleanValue(tpe.name, _))
     def apply(tpe: DoubleType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(DoubleValue(tpe.name, _))
+    def apply(tpe: FloatType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(FloatValue(tpe.name, _))
     def apply(tpe: DecimalType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(DecimalValue(tpe.name, _))
     def apply(tpe: IntegerType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(IntegerValue(tpe.name, _))
     def apply(tpe: LongType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(LongValue(tpe.name, _))
@@ -23,6 +24,8 @@ object Xdm {
     def apply(tpe: ByteType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(ByteValue(tpe.name, _))
     def apply(tpe: StringType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(StringValue(tpe.name, _))
     def apply(tpe: QNameType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(QNameValue(tpe.name, _))
+    def apply(tpe: DateType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(DateValue(tpe.name, _))
+    def apply(tpe: DateTimeType) = (string: String, ns: Namespaces) => tpe.parse(string, ns).right.map(DateTimeValue(tpe.name, _))
 
     def apply(tpe: ListType) = (lexicalRep: String, ns: Namespaces) =>  {
       val createItemValueFunction: String => Either[String, AtomicValue] = tpe.itemType match {
@@ -72,6 +75,7 @@ object Xdm {
     def visit(tpe: untypedAtomicType.type, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: BooleanType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: DoubleType, p: Unit) = createValueFunctions(tpe)
+    def visit(tpe: FloatType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: DecimalType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: IntegerType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: LongType, p: Unit) = createValueFunctions(tpe)
@@ -80,6 +84,8 @@ object Xdm {
     def visit(tpe: ByteType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: StringType, p: Unit) = createValueFunctions(tpe)
     def visit(tpe: QNameType, p: Unit) = createValueFunctions(tpe)
+    def visit(tpe: DateType, p: Unit) = createValueFunctions(tpe)
+    def visit(tpe: DateTimeType, p: Unit) = createValueFunctions(tpe)
   }
 
   trait SimpleVisitMethods {

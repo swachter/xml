@@ -1,6 +1,8 @@
 package eu.swdev.xml
 
+import eu.swdev.xml.data.DateTime
 import eu.swdev.xml.name.Namespaces
+import eu.swdev.xml.xdm.DateTimeValue
 
 import scala.util.Try
 
@@ -13,6 +15,8 @@ package object schema {
   val booleanType = BooleanType(BOOLEAN, anyAtomicType, Facets.withWspCollapse)
 
   val doubleType = DoubleType(DOUBLE, anyAtomicType, Facets.withWspCollapse)
+
+  val floatType = FloatType(FLOAT, anyAtomicType, Facets.withWspCollapse)
 
   val decimalType = DecimalType(DECIMAL, anyAtomicType, Facets.withWspCollapse)
 
@@ -29,6 +33,12 @@ package object schema {
   val stringType = StringType(STRING, anyAtomicType, Facets.withWspPreserve)
 
   val qNameType = QNameType(QNAME, anyAtomicType, Facets.withWspCollapse)
+
+  val dateType = DateType(DATE, anyAtomicType, Facets.withWspCollapse)
+
+  val dateTimeType = DateTimeType(DATE_TIME, anyAtomicType, Facets.withWspCollapse)
+
+  val dateTimeStampType = DateTimeType(DATE_TIME_STAMP, dateTimeType, Facets.withWspCollapse[AtomicVal[DateTime]].explicitTimeZone.checkAndSet(ExplicitTimeZone.Required).right.get)
 
   //
 

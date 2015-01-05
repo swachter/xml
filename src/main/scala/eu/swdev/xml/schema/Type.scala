@@ -3,6 +3,7 @@ package eu.swdev.xml.schema
 import java.util.concurrent.atomic.AtomicInteger
 
 import eu.swdev.xml.base._
+import eu.swdev.xml.data.{DateTime, Date}
 import eu.swdev.xml.name._
 import eu.swdev.xml.schema.Facets.WhitespaceFacet
 
@@ -292,6 +293,17 @@ sealed case class DoubleType(name: QName, baseType: Type, facets: Facets[AtomicV
   }
 }
 
+sealed case class FloatType(name: QName, baseType: Type, facets: Facets[AtomicVal[Float]]) extends NonStringAtomicType {
+  self =>
+  override type Data = Float
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = tryParse(string.toFloat)
+  override def lexicalRep(data: Data): String = String.valueOf(data)
+  override type VAL = AtomicVal[Float]
+  override val accept = new Accept[AtomicTypeVisitor] {
+    override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
+  }
+}
+
 sealed case class DecimalType(name: QName, baseType: Type, facets: Facets[AtomicVal[BigDecimal]]) extends NonStringAtomicType {
   self =>
   override type Data = BigDecimal
@@ -383,34 +395,48 @@ sealed case class QNameType(name: QName, baseType: Type, facets: Facets[AtomicVa
   }
 }
 
+sealed case class DateType(name: QName, baseType: Type, facets: Facets[AtomicVal[Date]]) extends AtomicType {
+  self =>
+  override type Data = Date
+  override def doParse(string: String, ns: Namespaces): Either[String, Data] = Date(string)
+  override def lexicalRep(data: Data): String = data.toString
+  override type VAL = AtomicVal[Date]
+  override val accept = new Accept[AtomicTypeVisitor] {
+    override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
+  }
+}
+
+sealed case class DateTimeType(name: QName, baseType: Type, facets: Facets[AtomicVal[DateTime]]) extends AtomicType {
+  self =>
+  override type Data = DateTime
+  override def doParse(string: String, ns: Namespaces): Either[String, DateTime] = DateTime(string)
+  override def lexicalRep(data: Data): String = data.toString
+  override type VAL = AtomicVal[DateTime]
+  override val accept = new Accept[AtomicTypeVisitor] {
+    override def apply[R, P](v: AtomicTypeVisitor[R, P], p: P): R = v.visit(self, p)
+  }
+}
+
 //
 //
 //
 
 trait AtomicTypeVisitor[Result, Param] {
   def visit(tpe: anyAtomicType.type, p: Param): Result
-
   def visit(tpe: untypedAtomicType.type, p: Param): Result
-
   def visit(tpe: BooleanType, p: Param): Result
-
   def visit(tpe: DoubleType, p: Param): Result
-
+  def visit(tpe: FloatType, p: Param): Result
   def visit(tpe: DecimalType, p: Param): Result
-
   def visit(tpe: IntegerType, p: Param): Result
-
   def visit(tpe: LongType, p: Param): Result
-
   def visit(tpe: IntType, p: Param): Result
-
   def visit(tpe: ShortType, p: Param): Result
-
   def visit(tpe: ByteType, p: Param): Result
-
   def visit(tpe: StringType, p: Param): Result
-
   def visit(tpe: QNameType, p: Param): Result
+  def visit(tpe: DateType, p: Param): Result
+  def visit(tpe: DateTimeType, p: Param): Result
 }
 
 trait SimpleTypeVisitor[Result, Param] extends AtomicTypeVisitor[Result, Param] {

@@ -1,5 +1,6 @@
 package eu.swdev.xml.xdm
 
+import eu.swdev.xml.data.{DateTime, Date}
 import eu.swdev.xml.name.QName
 
 /**
@@ -57,6 +58,10 @@ sealed case class DoubleValue(typeName: QName, data: Double) extends AtomicValue
   type Data = Double
 }
 
+sealed case class FloatValue(typeName: QName, data: Float) extends AtomicValue {
+  type Data = Float
+}
+
 sealed case class DecimalValue(typeName: QName, data: BigDecimal) extends AtomicValue {
   type Data = BigDecimal
 }
@@ -87,6 +92,14 @@ sealed case class StringValue(typeName: QName, data: String) extends AtomicValue
 
 sealed case class QNameValue(typeName: QName, data: QName) extends AtomicValue {
   type Data = QName
+}
+
+sealed case class DateValue(typeName: QName, data: Date) extends AtomicValue {
+  type Data = Date
+}
+
+sealed case class DateTimeValue(typeName: QName, data: DateTime) extends AtomicValue {
+  type Data = DateTime
 }
 
 

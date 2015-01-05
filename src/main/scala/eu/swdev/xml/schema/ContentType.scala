@@ -87,7 +87,7 @@ sealed case class AllGroupParticle(occurs: Occurs, nested: Seq[Particle]) extend
   override def withOccurs(o: Occurs) = copy(occurs = o)
 }
 
-case class ElemDecl(occurs: Occurs, name: QName, var elemType: Type, nillable: Boolean, abstrct: Boolean, valueConstraint: Option[ValueConstraint], identityConstraints: Seq[IdentityConstraint]) extends NestedParticle with SchemaTopComponent {
+case class ElemDecl(occurs: Occurs, name: QName, elemType: Type, nillable: Boolean, abstrct: Boolean, valueConstraint: Option[ValueConstraint], identityConstraints: Seq[IdentityConstraint]) extends NestedParticle with SchemaTopComponent {
   override def effectiveTotalRange: Occurs = occurs
 }
 

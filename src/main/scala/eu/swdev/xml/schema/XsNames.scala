@@ -45,6 +45,9 @@ object XsNames {
 
   val STRING = xsTypeName("string")
   val QNAME = xsTypeName("QName")
+  val DATE = xsTypeName("date")
+  val DATE_TIME = xsTypeName("dateTime")
+  val DATE_TIME_STAMP = xsTypeName("dateTimeStamp")
 
   val NORMALIZED_STRING = xsTypeName("normalizedString")
   val TOKEN = xsTypeName("token")

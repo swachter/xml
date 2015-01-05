@@ -64,22 +64,22 @@ object Facets {
 
     case class MinIncFacetValue(value: X) extends FacetValue[X, X] {
       override def check(x: X, lexicalRep: String): Boolean = ev.lteq(value, x)
-      override def restrict(v: X): Either[String, X] = if (ev.gteq(value, v)) Right(v) else Left(s"min. inclusive can not be restricted from $value to $v")
+      override def restrict(v: X): Either[String, X] = if (ev.gteq(v, value)) Right(v) else Left(s"min. inclusive can not be restricted from $value to $v")
     }
 
     case class MinExcFacetValue(value: X) extends FacetValue[X, X] {
       override def check(x: X, lexicalRep: String): Boolean = ev.lt(value, x)
-      override def restrict(v: X): Either[String, X] = if (ev.gteq(value, v)) Right(v) else Left(s"min. exclusive can not be restricted from $value to $v")
+      override def restrict(v: X): Either[String, X] = if (ev.gteq(v, value)) Right(v) else Left(s"min. exclusive can not be restricted from $value to $v")
     }
 
     case class MaxIncFacetValue(value: X) extends FacetValue[X, X] {
       override def check(x: X, lexicalRep: String): Boolean = ev.gteq(value, x)
-      override def restrict(v: X): Either[String, X] = if (ev.lteq(value, v)) Right(v) else Left(s"max. inclusive can not be restricted from $value to $v")
+      override def restrict(v: X): Either[String, X] = if (ev.lteq(v, value)) Right(v) else Left(s"max. inclusive can not be restricted from $value to $v")
     }
 
     case class MaxExcFacetValue(value: X) extends FacetValue[X, X] {
       override def check(x: X, lexicalRep: String): Boolean = ev.gt(value, x)
-      override def restrict(v: X): Either[String, X] = if (ev.lteq(value, v)) Right(v) else Left(s"max. exclusive can not be restricted from $value to $v")
+      override def restrict(v: X): Either[String, X] = if (ev.lteq(v, value)) Right(v) else Left(s"max. exclusive can not be restricted from $value to $v")
     }
 
     def minInc = FacetOp(facets, MinIncFacet, MinIncFacetValue.apply)

@@ -546,28 +546,23 @@ object JobMod {
         for {
           conf <- getConf
           identityConstraints <- Job.sequence(cmp.constraints.map(identityConstraint(_)))
+          (elementType: Type, typeCompletionJob: Job[Job[Unit]]) <- cmp.inlinedType.map {
+            // 1
+            case Left(simpleTypeElem) => simpleTypeJob(simpleTypeElem).map((_, Job.unit(Job.unit(()))))
+            case Right(complexTypeElem) => createComplexTypeJob(complexTypeElem)
+          }.orElse {
+            // 2
+            cmp.refType.map { qn => await[Type](qn, Created).map((_, Job.unit(Job.unit(())))) }
+          }.orElse {
+            // 3
+            cmp.subsitutionGroup.map { qns =>
+              // the referenced element declaration must be completed because its element type is accessed
+              await[ElemDecl](qns.head).map(ed => (ed.elemType, Job.unit(Job.unit(()))))
+            }
+          }.getOrElse(Job.unit((anyType, Job.unit(Job.unit(())))))
         } yield {
-          val elemDecl = ElemDecl(cmp.occurs, QNameFactory.caching.apply(conf.schemaTargetNamespace, LocalName(name)), null, cmp.nillable.getOrElse(false), cmp.abstr.value, valueConstraint(cmp), identityConstraints)
-          val continuationJob: Job[Job[Unit]] = for {
-            (elementType: Type, typeCompletionJob: Job[Unit@unchecked]) <- cmp.inlinedType.map {
-              // 1
-              case Left(simpleTypeElem) => simpleTypeJob(simpleTypeElem).map((_, Job.unit(())))
-              case Right(complexTypeElem) => createComplexTypeJob(complexTypeElem)
-            }.orElse {
-              // 2
-              cmp.refType.map { qn => await[Type](qn, Created)}
-            }.orElse {
-              // 3
-              cmp.subsitutionGroup.map { qns =>
-                // the referenced element declaration must be completed because its element type is accessed
-                await[ElemDecl](qns.head).map(ed => (ed.elemType, Job.unit(())))
-              }
-            }.getOrElse(Job.unit((anyType, Job.unit(()))))
-          } yield {
-            elemDecl.elemType = elementType
-            typeCompletionJob
-          }
-          (elemDecl, continuationJob)
+          val elemDecl = ElemDecl(cmp.occurs, QNameFactory.caching.apply(conf.schemaTargetNamespace, LocalName(name)), elementType, cmp.nillable.getOrElse(false), cmp.abstr.value, valueConstraint(cmp), identityConstraints)
+          (elemDecl, typeCompletionJob)
         }
       }
       case (_, Some(ref)) => await[ElemDecl](ref).map((_, Job.unit(Job.unit(()))))
@@ -801,6 +796,8 @@ object JobMod {
 
           override def visit(tpe: DoubleType, p: Unit): Job[AtomicType] = restrict(tpe)(DoubleType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), whitespaceHandler)
 
+          override def visit(tpe: FloatType, p: Unit): Job[AtomicType] = restrict(tpe)(FloatType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), whitespaceHandler)
+
           override def visit(tpe: untypedAtomicType.type, p: Unit): Job[AtomicType] = abort("untypedAtomic type can not be used as a base type")
 
           override def visit(tpe: IntegerType, p: Unit): Job[AtomicType] = restrict(tpe)(IntegerType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), digitsHandler[AtomicVal[BigInt]], whitespaceHandler)
@@ -817,6 +814,8 @@ object JobMod {
 
           override def visit(tpe: QNameType, p: Unit): Job[AtomicType] = restrict(tpe)(QNameType.apply)(generalFacetsHandler(tpe), whitespaceHandler)
 
+          override def visit(tpe: DateType, p: Unit): Job[AtomicType] = restrict(tpe)(DateType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), explicitTimeZoneHandler, whitespaceHandler)
+          override def visit(tpe: DateTimeType, p: Unit): Job[AtomicType] = restrict(tpe)(DateTimeType.apply)(generalFacetsHandler(tpe), orderHandler(tpe), explicitTimeZoneHandler, whitespaceHandler)
         }, ())
 
       }

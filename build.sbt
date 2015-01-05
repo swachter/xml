@@ -8,7 +8,9 @@ libraryDependencies += "com.chuusai" %% "shapeless" % "2.0.0"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.1" % "test"
 
-scalacOptions += "-Xplugin:/home/swachter/.ivy/local/demo/boxer_2.11/0.1-SNAPSHOT/jars/boxer_2.11.jar"
+libraryDependencies += "org.scalaz" %% "scalaz-core" % "7.1.0"
+
+// scalacOptions += "-Xplugin:/home/swachter/.ivy/local/demo/boxer_2.11/0.1-SNAPSHOT/jars/boxer_2.11.jar"
 
 // scalacOptions += "-Xshow-phases"
 

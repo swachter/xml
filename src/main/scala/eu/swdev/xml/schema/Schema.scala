@@ -30,11 +30,12 @@ object Schema {
     SymbolTable.empty +
       anyType + anySimpleType + anyAtomicType + untypedAtomicType +
       booleanType +
-      doubleType +
+      doubleType + floatType +
       decimalType + integerType + longType + intType + shortType + byteType +
       nonNegativeIntegerType + nonPositiveIntegerType + positiveIntegerType + negativeIntegerType +
       unsignedLongType + unsignedIntType + unsignedShortType + unsignedByteType +
       stringType + normalizedStringType + tokenType + languageType + nameType + ncNameType + entityType + idType + idRefType + nmTokenType +
-      qNameType
+      qNameType +
+      dateType + dateTimeType + dateTimeStampType
   )
 }

@@ -19,6 +19,7 @@ class TypeTest extends FunSuite {
       override def visit(tpe: untypedAtomicType.type, p: Unit): QName = tpe.name
       override def visit(tpe: BooleanType, p: Unit): QName = tpe.name
       override def visit(tpe: DoubleType, p: Unit): QName = tpe.name
+      override def visit(tpe: FloatType, p: Unit): QName = tpe.name
       override def visit(tpe: DecimalType, p: Unit): QName = tpe.name
       override def visit(tpe: IntegerType, p: Unit): QName = tpe.name
       override def visit(tpe: LongType, p: Unit): QName = tpe.name
@@ -27,6 +28,8 @@ class TypeTest extends FunSuite {
       override def visit(tpe: ByteType, p: Unit): QName = tpe.name
       override def visit(tpe: StringType, p: Unit): QName = tpe.name
       override def visit(tpe: QNameType, p: Unit): QName = tpe.name
+      override def visit(tpe: DateType, p: Unit): QName = tpe.name
+      override def visit(tpe: DateTimeType, p: Unit): QName = tpe.name
     }
     assert(anyType.accept(tv, ()) == XsNames.ANY_TYPE)
     assert(stringType.accept(tv, ()) == XsNames.STRING)
