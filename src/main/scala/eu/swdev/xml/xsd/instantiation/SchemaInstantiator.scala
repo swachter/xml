@@ -3,8 +3,7 @@ package eu.swdev.xml.xsd.instantiation
 import java.util
 import javax.print.attribute.standard.JobState
 
-import eu.swdev.xml.log
-import eu.swdev.xml.log.Messages
+import eu.swdev.xml.log._
 import eu.swdev.xml.name.{LocalName, QName, Namespace}
 import eu.swdev.xml.schema._
 import eu.swdev.xml.xsd.cmp._
@@ -13,13 +12,40 @@ import scala.annotation.tailrec
 
 /**
   */
-trait SchemaInstantiator { self: SchemaStore =>
+trait SchemaInstantiator { self: SchemaStore with SchemaResolver with SchemaParser =>
 
   import JobMod._
 
-  def jobs(schema: SchemaElem): Seq[Job[SchemaTopComponent]] = {
+  def jobs(schema: SchemaElem): (Messages, Seq[Job[SchemaTopComponent]]) = {
 
-    for {
+    val compositionMsgsAndJobs: Seq[(Messages, Seq[Job[SchemaTopComponent]])] = for {
+      cmp <- schema.compositions.collect { case Left(cmp: NonImportCompositionCmp) => cmp }
+    } yield {
+      cmp match {
+        case cmp: IncludeElem => {
+          val (resolveMsgs, optResolved) = resolveInclude(cmp.schemaLocation, cmp.baseUri)
+          optResolved.fold[(Messages, Seq[Job[SchemaTopComponent]])] {
+            (resolveMsgs, Seq())
+          } {
+            case (inputs, baseUri) => {
+              val (parseMsgs, optSchemaElem) = parseSchemaDocument(inputs, baseUri)
+              optSchemaElem.fold[(Messages, Seq[Job[SchemaTopComponent]])] {
+                (concat(resolveMsgs, parseMsgs), Seq())
+              } {
+                schemaElem => {
+                  val (jobsMsgs, jbs) = jobs(schemaElem)
+                  (concat(resolveMsgs, parseMsgs, jobsMsgs), jbs)
+                }
+              }
+            }
+          }
+        }
+        case cmp: RedefineElem => ???
+        case cmp: OverrideElem => ???
+      }
+    }
+
+    val schemaTopJobs = for {
       top <- schema.schemaTop.collect { case Left(stge: SchemaTopGroupElem) => stge }
     } yield {
       top match {
@@ -32,6 +58,8 @@ trait SchemaInstantiator { self: SchemaStore =>
         case e: SimpleTypeElem => simpleTypeJob(e)
       }
     }
+
+    (join(compositionMsgsAndJobs.map(_._1)), compositionMsgsAndJobs.map(_._2).flatten ++ schemaTopJobs)
 
   }
 
@@ -120,7 +148,7 @@ trait SchemaInstantiator { self: SchemaStore =>
                 // local symbol not (yet) available -> register local waiting continuation
               case None => state.copy(localWaiting = state.localWaiting.+(ncName, stage, rec)(symbolSpace))
             }
-            case GlobalRef(symbolSpace, qName, schemaLocation) => state.imported.get(qName.namespace) match {
+            case GlobalRef(symbolSpace, qName, importHint) => state.imported.get(qName.namespace) match {
               case Some(optSchema) => {
                 optSchema match {
                   case Some(schema) => {
@@ -135,8 +163,8 @@ trait SchemaInstantiator { self: SchemaStore =>
               }
               // the schema has not yet been imported
               case None => {
-                val t = importSchema(qName.namespace, schemaLocation)
-                val newState = state.copy(log = log.concat(t._1, state.log), imported = state.imported + (qName.namespace -> t._2))
+                val t = importSchema(qName.namespace, importHint)
+                val newState = state.copy(log = concat(t._1, state.log), imported = state.imported + (qName.namespace -> t._2))
                 drive(step, newState)
               }
             }
@@ -145,11 +173,11 @@ trait SchemaInstantiator { self: SchemaStore =>
         case Done(a, jobState) => {
           val newState = stateAfterDefinition(a, Completed, state)
           newState.copy(
-            log = log.concat(jobState.log, newState.log)
+            log = concat(jobState.log, newState.log)
           )
         }
         case Abort(jobState) => {
-          state.copy(log = log.concat(jobState.log, state.log))
+          state.copy(log = concat(jobState.log, state.log))
         }
         case Define(o, stage, next) => {
           val newState = stateAfterDefinition(o, stage, state)
@@ -199,12 +227,12 @@ trait SchemaInstantiator { self: SchemaStore =>
       }
     }
 
-    val initialJobs = jobs(schemaElem)
+    val (msgs, initialJobs) = jobs(schemaElem)
     val jobConfig = new JobConf(schemaElem, targetNamespace)
-    val jobState = new State(jobConfig, log.emptyMessages)
+    val jobState = new State(jobConfig, emptyMessages)
     val initialSteps: Seq[Step[SchemaTopComponent]] = initialJobs.map(_.run(jobState))
 
-    val initialState = InstantiationState(initialSteps, LocalWaiting(Map.empty), GlobalWaiting(Map.empty), Map.empty, log.emptyMessages, Results(Map.empty))
+    val initialState = InstantiationState(initialSteps, LocalWaiting(Map.empty), GlobalWaiting(Map.empty), Map.empty, emptyMessages, Results(Map.empty))
 
     val finalState = driveSteps(initialState)
 

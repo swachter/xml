@@ -16,14 +16,12 @@ import scala.util.{Failure, Success, Try}
 
 trait XsdPushParserMod extends XmlPushParserMod {
 
-  def parseSchemaDocument(inputs: DriveInputs): (Messages, Option[SchemaElem]) = {
-    val driveResult = parseDocument(schema, initialState, inputs)
+  def parseSchemaDocument(inputs: DriveInputs, baseUri: Option[URI]): (Messages, Option[SchemaElem]) = {
+    val driveResult = parseDocument(schema, initialState(baseUri, 0), inputs)
     (driveResult._2.log, driveResult._1)
   }
 
   type Payload = Int
-
-  def initialState: State = initialState(0)
 
   type OpenAttrsValue = Map[QName, String]
   type IdAttrValue = Option[String]
@@ -85,7 +83,7 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val complexTypeContent: Parser[ComplexTypeContentCmp] = simpleContent | complexContent | complexContentAbbrev
 
-  lazy val compositionGroupElem: Parser[CompositionGroupElem] = include | importElem | redefine | overrideElem
+  lazy val compositionGroupElem: Parser[CompositionCmp] = include | importElem | redefine | overrideElem
 
   lazy val defaultAttr: Parser[String] = strAttr("default")
 
@@ -139,9 +137,9 @@ trait XsdPushParserMod extends XmlPushParserMod {
 
   lazy val identityConstraint: Parser[IdentityConstraintCmp[_]] = unique | key | keyref
 
-  lazy val importElem: Parser[ImportElem] = xsElem("import")(annotated ~ schemaLocationAttr.opt ~ namespaceAttr) gmap Generic[ImportElem]
+  lazy val importElem: Parser[ImportElem] = xsElem("import")(annotated ~ schemaLocationAttr.opt ~ namespaceAttr ~ baseUri) gmap Generic[ImportElem]
 
-  lazy val include: Parser[IncludeElem] = xsElem("include")(annotated ~ schemaLocationAttr) gmap Generic[IncludeElem]
+  lazy val include: Parser[IncludeElem] = xsElem("include")(annotated ~ schemaLocationAttr ~ baseUri) gmap Generic[IncludeElem]
 
   lazy val inheritableAttr: Parser[Boolean] = booleanAttr("inheritable")
 
@@ -376,6 +374,8 @@ trait XsdPushParserMod extends XmlPushParserMod {
   private def qNamesAttr(name: String): Parser[List[QName]] = strAttr(name) map (_.split("\\s+").toList) >>= (Parser.traverse(_)(resolveQn))
 
   val namespaces: Parser[Namespaces] = getState.map(_.namespacesStack.head)
+
+  val baseUri: Parser[Option[URI]] = getState.map(_.baseUriStack.head)
 
   val lastLocation = getState.map(_.lastLocation.get)
 

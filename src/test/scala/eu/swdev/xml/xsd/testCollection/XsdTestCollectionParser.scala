@@ -1,6 +1,6 @@
 package eu.swdev.xml.xsd.testCollection
 
-import java.net.URL
+import java.net.{URI, URL}
 import javax.xml.stream.XMLInputFactory
 import javax.xml.transform.stream.StreamSource
 
@@ -72,12 +72,12 @@ object XsdTestCollectionParser extends XmlPushParserMod with XmlEventReaderInput
   private def strAttr(ns: Namespace, name: String): Parser[String] = requiredAttr(QNameFactory.caching(ns, LocalName(name)))
 
 
-  def inputs(url: URL): DriveInputs = {
-    val reader = XMLInputFactory.newInstance().createXMLEventReader(new StreamSource(url.toExternalForm))
+  def inputs(uri: URI): DriveInputs = {
+    val reader = XMLInputFactory.newInstance().createXMLEventReader(new StreamSource(uri.toURL.toExternalForm))
     inputs(reader)
   }
 
-  def parseDoc[O](p: Parser[O]): URL => DriveResult[O] = in => document(p).drive(initialState(()), inputs(in))
+  def parseDoc[O](p: Parser[O]): URI => DriveResult[O] = in => document(p).drive(initialState(Some(in), ()), inputs(in))
 }
 
 case class AnnotationElem(loc: Location, id: Option[String], seq: Seq[Either[AppInfoElem, DocumentationElem]], openAttrs: Map[QName, String])

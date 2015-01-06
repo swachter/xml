@@ -1,6 +1,8 @@
 package eu.swdev.xml.pushparser
 
 import java.io.{StringReader, StringWriter}
+import java.net.{URI, URL}
+import javax.xml.XMLConstants
 import javax.xml.stream.events.Comment
 import javax.xml.stream.{XMLInputFactory, XMLEventReader}
 import javax.xml.transform.Source
@@ -9,7 +11,6 @@ import eu.swdev.pushparser.PushParserMod
 import eu.swdev.xml.base.{Location, PublicId, ResId, SystemId}
 import eu.swdev.xml.log.Messages
 import eu.swdev.xml.name._
-import shapeless.HNil
 
 import scala.util.{Failure, Success, Try}
 
@@ -39,6 +40,8 @@ trait XmlPushParserMod extends PushParserMod {
     def newNamespaces: TraversableOnce[(Prefix, Namespace)]
 
     def attrs: Map[QName, String]
+
+    def newBaseUri: Option[URI]
   }
 
   sealed trait EndElementEvent extends XmlEvent {
@@ -55,7 +58,8 @@ trait XmlPushParserMod extends PushParserMod {
 
   case class XmlParserState(
     namespacesStack: List[Namespaces],
-    startedElements: List[QName],
+    startedElementsStack: List[QName],
+    baseUriStack: List[Option[URI]],
     log: Messages,
     dataStack: List[StateData],
     payload: Payload,
@@ -70,7 +74,7 @@ trait XmlPushParserMod extends PushParserMod {
 
   case object NoStateData extends StateData
 
-  def initialState(initialPayload: Payload) = XmlParserState(List(Namespaces.initial), Nil, Nil, List(NoStateData), initialPayload, None)
+  def initialState(baseUri: Option[URI], initialPayload: Payload) = XmlParserState(List(Namespaces.initial), Nil, baseUri :: Nil, Nil, List(NoStateData), initialPayload, None)
 
   //
 
@@ -98,8 +102,10 @@ trait XmlPushParserMod extends PushParserMod {
       case Some(e: StartElementEvent) =>
         if (name == e.name) {
           val ns = state.namespacesStack.head.nestedScope(e.newNamespaces) :: state.namespacesStack
-          val es = e.name :: state.startedElements
-          Done(e.location, state.copy(namespacesStack = ns, startedElements = es, dataStack = StartedElementData(e.attrs, Set[QName]()) :: state.dataStack, lastLocation = Some(e.location)))
+          val es = e.name :: state.startedElementsStack
+          val bs = e.newBaseUri.orElse(state.baseUriStack.head) :: state.baseUriStack
+          val ds = StartedElementData(e.attrs, Set[QName]()) :: state.dataStack
+          Done(e.location, state.copy(namespacesStack = ns, startedElementsStack = es, baseUriStack = bs, dataStack = ds, lastLocation = Some(e.location)))
         } else {
           abort(state, s"can not start element; names differ - name: $name; event.name: ${e.name}")
         }
@@ -121,14 +127,14 @@ trait XmlPushParserMod extends PushParserMod {
       case Some(StartedElementData(attrs, processed)) => {
         Await {
           case Some(e: EndElementEvent) =>
-            if (e.name == state.startedElements.head) {
+            if (e.name == state.startedElementsStack.head) {
               val unprocessedAttrs = attrs.filter(t => !processed.contains(t._1))
               val resLog = if (unprocessedAttrs.isEmpty) state.log else s"unprocessed attributes: $unprocessedAttrs" :: state.log
-              Done((), state.copy(namespacesStack = state.namespacesStack.tail, startedElements = state.startedElements.tail, log = resLog, dataStack = state.dataStack.tail, lastLocation = Some(e.location)))
+              Done((), state.copy(namespacesStack = state.namespacesStack.tail, startedElementsStack = state.startedElementsStack.tail, baseUriStack = state.baseUriStack.tail, log = resLog, dataStack = state.dataStack.tail, lastLocation = Some(e.location)))
             } else {
-              abort(state, s"can not end element; names differ - event.name: ${e.name}; head: ${state.startedElements.head}")
+              abort(state, s"can not end element; names differ - event.name: ${e.name}; head: ${state.startedElementsStack.head}")
             }
-          case Some(i) => abort(state, s"can not end element '${state.startedElements.head}' - unexpected input: $i at position: ${i.location}")
+          case Some(i) => abort(state, s"can not end element '${state.startedElementsStack.head}' - unexpected input: $i at position: ${i.location}")
           case i => abort(state, s"can not end element - missing input: $i")
         }
       }
@@ -267,6 +273,7 @@ trait XmlEventReaderInputs {
       name: QName,
       attrs: Map[QName, String],
       newNamespaces: Map[Prefix, Namespace],
+      newBaseUri: Option[URI],
       underlying: je.StartElement) extends StartElementEvent with XmlEventImpl
 
     case class EndElementEventImpl(name: QName, underlying: je.EndElement) extends EndElementEvent with XmlEventImpl
@@ -282,7 +289,8 @@ trait XmlEventReaderInputs {
           import scala.collection.JavaConverters._
           val attrs = e.getAttributes.asScala.asInstanceOf[Iterator[je.Attribute]].map(a => toQName(a.getName) -> a.getValue).toMap
           val newNamespaces = e.getNamespaces.asScala.asInstanceOf[Iterator[je.Namespace]].map(n => Prefix(n.getPrefix) -> Namespace(n.getNamespaceURI)).toMap
-          StartElementEventImpl(e.getName, attrs, newNamespaces, e)
+          val newBaseUri = Option(e.getAttributeByName(new Jqn(XMLConstants.XML_NS_URI, "base"))).map(baseUriAttr => new URI(baseUriAttr.getValue))
+          StartElementEventImpl(e.getName, attrs, newNamespaces, newBaseUri, e)
         }
         case e: je.EndElement => EndElementEventImpl(e.getName, e)
         case e: je.StartDocument => StartDocumentEventImpl(e)

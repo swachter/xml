@@ -21,8 +21,8 @@ object SymbolSpace {
     type SymbolType = AttrDecl
     def name = "attribute declaration"
   }
-  implicit val Group = new SymbolSpace[GroupParticle] {
-    type SymbolType = GroupParticle
+  implicit val Group = new SymbolSpace[GroupDef] {
+    type SymbolType = GroupDef
     def name = "group"
   }
   implicit val AttrGroup = new SymbolSpace[AttrGroup] {

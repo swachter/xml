@@ -1,6 +1,8 @@
 package eu.swdev.xml.xsd.instantiation
 
-import eu.swdev.xml.base.{DefaultValue, SomeValue}
+import java.net.URI
+
+import eu.swdev.xml.base.{Location, DefaultValue, SomeValue}
 import eu.swdev.xml.{name, log}
 import eu.swdev.xml.log.{Message, Messages}
 import eu.swdev.xml.name._
@@ -104,8 +106,14 @@ object JobMod {
 
   sealed case class LocalRef[X](symbolSpace: SymbolSpace[X], ncName: LocalName, stage: Stage) extends Ref[X]
 
-  sealed case class GlobalRef[X](symbolSpace: SymbolSpace[X], qName: QName, schemaLocation: Option[String]) extends Ref[X]
+  sealed case class GlobalRef[X](symbolSpace: SymbolSpace[X], qName: QName, importHint: SchemaImportHint) extends Ref[X]
 
+  case class SchemaImportHint(schemaLocation: Option[String], baseUri: Option[URI])
+
+  object SchemaImportHint {
+    val None = SchemaImportHint(Option.empty, Option.empty)
+  }
+  
   sealed trait Stage
 
   case object Created extends Stage
@@ -113,7 +121,8 @@ object JobMod {
 
   case class JobConf(schemaElem: SchemaElem, schemaTargetNamespace: Namespace) {
     def attributeFormDefault: Form = schemaElem.attributeFormDefault.value
-    val schemaLocations: Map[Namespace, Option[String]] = schemaElem.schemaTop.collect { case Left(ie: ImportElem) => ie } map ( ie => (ie.namespace.map(new Namespace(_)).getOrElse(NoNamespace) -> ie.schemaLocation )) toMap
+    val importHints: Map[Namespace, SchemaImportHint] =
+      schemaElem.compositions.collect { case Left(ie: ImportElem) => ie } map ( ie => (ie.namespace.map(Namespace(_)).getOrElse(NoNamespace) -> SchemaImportHint(ie.schemaLocation, ie.baseUri))) toMap
   }
   
   case class State(config: JobConf, log: Messages)
@@ -122,7 +131,7 @@ object JobMod {
 
   def abort[C](msg: String): Job[C] = Job[C] { state => Abort(addError(state, msg)) }
 
-  def await[A](name: QName, stage: Stage = Completed)(implicit ev: SymbolSpace[A], ct: ClassTag[A]): Job[A] = {
+  def await[A](name: QName, loc: Location, stage: Stage = Completed)(implicit ev: SymbolSpace[A], ct: ClassTag[A]): Job[A] = {
     Job { state => {
 
       def doAwait(ref: Ref[A]) = Await[A, A](ref, {
@@ -139,12 +148,12 @@ object JobMod {
       if (name.namespace == state.config.schemaTargetNamespace) {
         doAwait(LocalRef(ev, name.localName, stage))
       } else if (name.namespace == XsdNamespace) {
-        doAwait(GlobalRef(ev, name, None))
+        doAwait(GlobalRef(ev, name, SchemaImportHint.None))
       } else {
-        state.config.schemaLocations.get(name.namespace).fold[Step[A]] {
-          Abort(addError(state, s"namespace ${name.namespace} is not imported"))
+        state.config.importHints.get(name.namespace).fold[Step[A]] {
+          Abort(addError(state, s"can not resolve symbol; namespace not imported - namespace: ${name.namespace}; local name: ${name.localName}; symbol space: ${ev.name}; location: $loc"))
         } {
-          schemaLocation => doAwait(GlobalRef(ev, name, schemaLocation))
+          importHint => doAwait(GlobalRef(ev, name, importHint))
         }
       }
 
@@ -172,7 +181,7 @@ object JobMod {
   def createComplexTypeJob(cmp: ComplexTypeElem): Job[(ComplexType, Job[Job[Unit]])] = for {
     conf <- getConf
     typeName <- qName(cmp.name)
-    baseType <- await[Type](cmp.content.base, Created)
+    baseType <- await[Type](cmp.content.base, cmp.loc, Created)
     attrs <- attrsModelJob(cmp.content, if (cmp.defaultAttributesApply.value) conf.schemaElem.defaultAttributes else None)
     mergedAttrs <- mergeWithInheritedAttrs(attrs, baseType, cmp.content.derivationMethod)
     finl = cmp.finl.getOrElse(conf.schemaElem.finalDefault.value).toSet[CtDerivationCtrl]
@@ -258,7 +267,7 @@ object JobMod {
 
   // 3.4.2.2 determine the simple type definition of the content type property
   def simpleTypeDefinitionJob(derivation: SimpleDerivationCmp): Job[SimpleType] = {
-    await[Type](derivation.base) >>= { baseType =>
+    await[Type](derivation.base, derivation.loc) >>= { baseType =>
       (baseType, derivation) match {
         // 1
         case (bt: ComplexType, d: SimpleContentRestrictionElem) if (bt.content.simpleTypeDefinition.isDefined) => {
@@ -499,7 +508,7 @@ object JobMod {
       case cmp: ChoiceElem => genericGroupJob(cmp)(ChoiceParticle(_, _))
       case cmp: SequenceElem => genericGroupJob(cmp)(SeqParticle(_, _))
       case cmp: GroupRefElem => {
-        await[GroupParticle](cmp.ref).map(gp => (gp.withOccurs(cmp.occurs), Job.unit(Job.unit(()))))
+        await[GroupDef](cmp.ref, cmp.loc).map(gd => (gd.particle.withOccurs(cmp.occurs), Job.unit(Job.unit(()))))
       }
     }
   }
@@ -522,9 +531,11 @@ object JobMod {
       case cmp: ChoiceElem => genericGroupJob(cmp)(ChoiceParticle(_, _))
       case cmp: ElementElem => createElemDeclJob(cmp)
       case cmp: GroupRefElem => {
-        await[GroupParticle](cmp.ref) >>= {
-          case groupParticle: NestedParticle => Job.unit((groupParticle, Job.unit(Job.unit(()))))
-          case groupParticle => abort(s"referenced group $groupParticle can not be nested inside another group")
+        await[GroupDef](cmp.ref, cmp.loc) >>= {
+          gd => gd.particle match {
+            case groupParticle: NestedParticle => Job.unit((groupParticle, Job.unit(Job.unit(()))))
+            case groupParticle => abort(s"referenced group $groupParticle can not be nested inside another group")
+          }
         }
       }
       case cmp: SequenceElem => genericGroupJob(cmp)(SeqParticle(_, _))
@@ -552,12 +563,12 @@ object JobMod {
             case Right(complexTypeElem) => createComplexTypeJob(complexTypeElem)
           }.orElse {
             // 2
-            cmp.refType.map { qn => await[Type](qn, Created).map((_, Job.unit(Job.unit(())))) }
+            cmp.refType.map { qn => await[Type](qn, cmp.loc, Created).map((_, Job.unit(Job.unit(())))) }
           }.orElse {
             // 3
             cmp.subsitutionGroup.map { qns =>
               // the referenced element declaration must be completed because its element type is accessed
-              await[ElemDecl](qns.head).map(ed => (ed.elemType, Job.unit(Job.unit(()))))
+              await[ElemDecl](qns.head, cmp.loc).map(ed => (ed.elemType, Job.unit(Job.unit(()))))
             }
           }.getOrElse(Job.unit((anyType, Job.unit(Job.unit(())))))
         } yield {
@@ -565,7 +576,7 @@ object JobMod {
           (elemDecl, typeCompletionJob)
         }
       }
-      case (_, Some(ref)) => await[ElemDecl](ref).map((_, Job.unit(Job.unit(()))))
+      case (_, Some(ref)) => await[ElemDecl](ref, cmp.loc).map((_, Job.unit(Job.unit(()))))
       case _ => abort(s"missing name or ref attribute on element declaration")
     }
   }
@@ -573,7 +584,7 @@ object JobMod {
   def identityConstraint(cmp: IdentityConstraintCmp[_]): Job[IdentityConstraint] = {
     cmp match {
       case cmp: KeyElem => cmp.refOrDef match {
-        case Left(ref) => await[KeyConstraint](ref)
+        case Left(ref) => await[KeyConstraint](ref, cmp.loc)
         case Right(keyDef) => for {
           name <- qName(keyDef.name)
           c = KeyConstraint(name, selector(keyDef.selector), keyDef.fields.map(field(_)))
@@ -581,16 +592,16 @@ object JobMod {
         } yield c
       }
       case cmp: KeyRefElem => cmp.refOrDef match {
-        case Left(ref) => await[KeyRefConstraint](ref)
+        case Left(ref) => await[KeyRefConstraint](ref, cmp.loc)
         case Right(keyDef) => for {
           name <- qName(keyDef.name)
-          referencedKey <- await[KeyOrUniqueConstraint](keyDef.refer)
+          referencedKey <- await[KeyOrUniqueConstraint](keyDef.refer, cmp.loc)
           c = KeyRefConstraint(name, selector(keyDef.selector), keyDef.fields.map(field(_)), referencedKey)
           _ <- define(c, Completed)
         } yield c
       }
       case cmp: UniqueElem => cmp.refOrDef match {
-        case Left(ref) => await[UniqueConstraint](ref)
+        case Left(ref) => await[UniqueConstraint](ref, cmp.loc)
         case Right(keyDef) => for {
           name <- qName(keyDef.name)
           c = UniqueConstraint(name, selector(keyDef.selector), keyDef.fields.map(field(_)))
@@ -618,7 +629,7 @@ object JobMod {
       job
     } {
       // when a default attribute group must be considered then add it at the end
-      qn => job >>= { attrsModel => await[AttrGroup](qn).map(defaultAttributeGroup => attrsModel.add(defaultAttributeGroup.attrsModel)) }
+      qn => job >>= { attrsModel => await[AttrGroup](qn, cmp.loc).map(defaultAttributeGroup => attrsModel.add(defaultAttributeGroup.attrsModel)) }
     }
   }
 
@@ -636,7 +647,7 @@ object JobMod {
     listJob.map(_.foldLeft(AttrsModel.empty)((am, acc) => acc.add(am)))
   }
 
-  def attrsModelJob(ref: AttributeGroupRefElem): Job[AttrsModel] = await[AttrGroup](ref.ref) map (_.attrsModel)
+  def attrsModelJob(cmp: AttributeGroupRefElem): Job[AttrsModel] = await[AttrGroup](cmp.ref, cmp.loc) map (_.attrsModel)
 
   def attrsModelJob(ae: AttributeElemL): Job[AttrsModel] = {
     attrDeclJob(ae).map(attrDecl => {
@@ -669,14 +680,14 @@ object JobMod {
       }
       AttrDecl(QNameFactory.caching.apply(namespace, LocalName(an)), simpleType, None, cmp.inheritable.getOrElse(false))
     }
-    case (_, Some(ref)) => await[AttrDecl](ref)
+    case (_, Some(ref)) => await[AttrDecl](ref, cmp.loc)
     case _ => abort(s"attribute must have a name or a ref attribute at: ${cmp.loc}")
   }
 
   // 3.2.2.1 / 3.2.2.2
   def simpleTypeJob(cmp: AttributeCmp): Job[SimpleType] = (cmp.simpleType, cmp.refType) match {
     case (Some(simpleTypeElem), _) => simpleTypeJob(simpleTypeElem)
-    case (_, Some(ref)) => await[SimpleType](ref)
+    case (_, Some(ref)) => await[SimpleType](ref, cmp.loc)
     case _ => Job.unit(anySimpleType)
   }
 
@@ -684,16 +695,16 @@ object JobMod {
   def simpleTypeJob(st: SimpleTypeElem): Job[SimpleType] = st.derivation match {
     case d: SimpleTypeRestrictionElem => for {
       typeName <- qName(st.name)
-      baseType <- d.base.fold(simpleTypeJob(d.tpe.get))(await[SimpleType](_))
+      baseType <- d.base.fold(simpleTypeJob(d.tpe.get))(await[SimpleType](_, d.loc))
       restrictedType <- simpleTypeRestriction(typeName, baseType, d.facetSpecs)
     } yield restrictedType
     case d: ListElem => for {
       typeName <- qName(st.name)
-      itemType <- d.itemType.fold(simpleTypeJob(d.simpleType.get))(await[SimpleType](_))
+      itemType <- d.itemType.fold(simpleTypeJob(d.simpleType.get))(await[SimpleType](_, d.loc))
     } yield ListType(typeName, anySimpleType, Facets.withWspCollapse[ListVal], itemType)
     case d: UnionElem => for {
       typeName <- qName(st.name)
-      memberTypes <- d.memberTypes.fold(Job.unit(Seq[SimpleType]()))(qns => Job.traverse(qns)(await[SimpleType](_))) & Job.traverse(d.simpleTypes)(simpleTypeJob(_))
+      memberTypes <- d.memberTypes.fold(Job.unit(Seq[SimpleType]()))(qns => Job.traverse(qns)(await[SimpleType](_, d.loc))) & Job.traverse(d.simpleTypes)(simpleTypeJob(_))
     } yield UnionType(typeName, anySimpleType, Facets.empty[SimpleVal], memberTypes._1 ++ memberTypes._2)
   }
 

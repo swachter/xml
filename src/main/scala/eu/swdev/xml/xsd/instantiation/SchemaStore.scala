@@ -6,10 +6,11 @@ import eu.swdev.xml.log._
 import eu.swdev.xml.name.Namespace
 import eu.swdev.xml.schema.Schema
 import eu.swdev.xml.xsd.cmp.SchemaElem
+import eu.swdev.xml.xsd.instantiation.JobMod.SchemaImportHint
 
 trait SchemaStore {
 
-  def importSchema(namespace: Namespace, schemaLocation: Option[String]): (Messages, Option[Schema])
+  def importSchema(namespace: Namespace, importHint: SchemaImportHint): (Messages, Option[Schema])
 
 }
 
@@ -21,19 +22,19 @@ trait SimpleSchemaStore extends SchemaStore { self: SchemaParser with SchemaInst
 
   private lazy val builtIn = builtInSchemas.map(s => s.namespace -> (emptyMessages, Some(s))).toMap
 
-  override def importSchema(namespace: Namespace, schemaLocation: Option[String]): (Messages, Option[Schema]) = {
+  override def importSchema(namespace: Namespace, importHint: SchemaImportHint): (Messages, Option[Schema]) = {
     builtIn.getOrElse(namespace, {
       loadedSchemas.synchronized {
         val t = loadedSchemas.get(namespace)
         if (t == null) {
           
-          val (rLog, optInputs) = resolveSchema(namespace, schemaLocation)
+          val (rLog, optResolved) = resolveImport(namespace, importHint)
           
-          val res@(log2, optSchema) = optInputs.fold {
+          val res@(log2, optSchema) = optResolved.fold {
             (rLog, Option.empty[Schema])
           } {
-            inputs => {
-              val (pLog, optSchema) = loadSchema(inputs)
+            resolved => {
+              val (pLog, optSchema) = loadSchema(resolved._1, resolved._2)
               (concat(pLog, rLog), optSchema)
             }
           }

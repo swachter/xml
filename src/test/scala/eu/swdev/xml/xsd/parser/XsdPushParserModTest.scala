@@ -20,7 +20,7 @@ class XsdPushParserModTest extends FunSuite with Inside {
       inputs(reader)
     }
 
-    def stringParser[O](p: Parser[O]): String => DriveResult[O] = s => parseDocument(p, initialState(initialPayload), inputs(s))
+    def stringParser[O](p: Parser[O]): String => DriveResult[O] = s => parseDocument(p, initialState(None, initialPayload), inputs(s))
 
     def initialPayload: Payload
   }
@@ -182,7 +182,7 @@ class XsdPushParserModTest extends FunSuite with Inside {
     import xsdParsers._
 
     def parse[C <: Relation](string: String)(pf: PartialFunction[String, C]) =
-      derivationCtrlStr(success(string))(pf).drive(initialState, Stream.empty)
+      derivationCtrlStr(success(string))(pf).drive(initialState(None, 0), Stream.empty)
 
     inside(parse("#all")(relExtension orElse relRestriction)) {
       case (Some(RelationSet.All), _, _, _) =>

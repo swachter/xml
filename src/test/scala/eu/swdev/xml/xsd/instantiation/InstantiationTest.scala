@@ -1,12 +1,14 @@
 package eu.swdev.xml.xsd.instantiation
 
 import java.io.StringReader
+import java.net.URI
 import javax.xml.transform.stream.StreamSource
 
 import eu.swdev.xml.log._
 import eu.swdev.xml.name.{LocalName, Namespace}
 import eu.swdev.xml.pushparser.XmlEventReaderInputs
 import eu.swdev.xml.schema.{Type, Schema}
+import eu.swdev.xml.xsd.instantiation.JobMod.SchemaImportHint
 import eu.swdev.xml.xsd.parser.XsdPushParserMod
 import org.scalatest.{Inside, FunSuite}
 
@@ -16,20 +18,20 @@ class InstantiationTest extends FunSuite with Inside {
 
   test("simple types") {
 
-    object sut extends SchemaInstantiator with SchemaParser with SimpleSchemaStore with SchemaResolver with SchemaLoader {
+    object sut extends SchemaInstantiator with SchemaParser with SimpleSchemaStore with StdResolveImport with SchemaLoader {
 
       override def builtInSchemas: Iterable[Schema] = Seq(Schema.builtInSchema)
 
       override val xsdParsers = new XsdPushParserMod with XmlEventReaderInputs {}
 
-      override def resolveSchema(namespace: Namespace, schemaLocation: Option[String]): (Messages, Option[xsdParsers.DriveInputs]) = {
-        (prepend("can not resolve schema for namespace", emptyMessages), None)
+      override def resolveInclude(schemaLocation: String, baseUri: Option[URI]): (Messages, Option[(xsdParsers.DriveInputs, Option[URI])]) = {
+        (prepend(s"can not resolve schema for schema location: $schemaLocation", emptyMessages), None)
       }
 
       def parse(string: String): (Messages, Option[Schema]) = {
         val source = new StreamSource(new StringReader(string))
         val inputs = xsdParsers.inputs(source)
-        loadSchema(inputs)
+        loadSchema(inputs, None)
       }
 
     }

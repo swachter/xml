@@ -1,6 +1,6 @@
 package eu.swdev.xml.xsd.cmp
 
-import java.net.URI
+import java.net.{URL, URI}
 
 import eu.swdev.etc.NotNothing
 import eu.swdev.xml.base.{SomeValue, WhitespaceProcessing, Location}
@@ -19,7 +19,9 @@ import scala.util.matching.Regex
 // groups & substitution groups
 //
 
-sealed trait CompositionGroupElem
+sealed trait CompositionCmp
+
+sealed trait NonImportCompositionCmp extends CompositionCmp
 
 sealed trait FacetElem
 
@@ -85,9 +87,11 @@ sealed trait ComplexDerivationCmp extends DerivationCmp {
 }
 
 sealed trait SimpleDerivationCmp extends DerivationCmp {
+  def loc: Location
 }
 
 sealed trait ComplexTypeContentCmp {
+  def loc: Location
   def base: QName
   def derivationMethod: CtDerivationCtrl
 }
@@ -200,9 +204,9 @@ case class GroupDefElem(loc: Location, id: Option[String], annotation: Option[An
 
 case class GroupRefElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], ref: QName, occurs: Occurs, openAttrs: Map[QName, String]) extends NestedParticleCmp with TypeDefParticleCmp
 
-case class ImportElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: Option[String], namespace: Option[String], openAttrs: Map[QName, String]) extends CompositionGroupElem
+case class ImportElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: Option[String], namespace: Option[String], baseUri: Option[URI], openAttrs: Map[QName, String]) extends CompositionCmp
 
-case class IncludeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: String, openAttrs: Map[QName, String]) extends CompositionGroupElem
+case class IncludeElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], schemaLocation: String, baseUri: Option[URI], openAttrs: Map[QName, String]) extends NonImportCompositionCmp
 
 case class KeyDefElem(loc: Location, name: String, selector: SelectorElem, fields: List[FieldElem]) extends KeyDefCmp
 
@@ -222,11 +226,11 @@ case class OpenContentAnyElem(loc: Location, id: Option[String], annotation: Opt
 
 case class OpenContentElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], mode: SomeValue[OpenContentMode], optAny: Option[OpenContentAnyElem], openAttrs: Map[QName, String]) extends OpenContentCmp
 
-case class OverrideElem(loc: Location, id: Option[String], schemaLocation: String, overrides: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
+case class OverrideElem(loc: Location, id: Option[String], schemaLocation: String, overrides: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends NonImportCompositionCmp
 
-case class RedefineElem(loc: Location, id: Option[String], schemaLocation: String, redefines: Seq[Either[RedefinableGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends CompositionGroupElem
+case class RedefineElem(loc: Location, id: Option[String], schemaLocation: String, redefines: Seq[Either[RedefinableGroupElem, AnnotationElem]], openAttrs: Map[QName, String]) extends NonImportCompositionCmp
 
-case class SchemaElem(loc: Location, id: Option[String], targetNamespace: Option[URI], version: Option[String], finalDefault: SomeValue[RelationSet[TypeDerivationCtrl]], blockDefault: SomeValue[RelationSet[BlockCtrl]], attributeFormDefault: SomeValue[Form], elementFormDefault: SomeValue[Form], defaultAttributes: Option[QName], xPathDefaultNamespace: SomeValue[XPathDefaultNamespace], lang: Option[String], compositions: Seq[Either[CompositionGroupElem, AnnotationElem]], defaultOpenContent: Option[DefaultOpenContentElem], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String])
+case class SchemaElem(loc: Location, id: Option[String], targetNamespace: Option[URI], version: Option[String], finalDefault: SomeValue[RelationSet[TypeDerivationCtrl]], blockDefault: SomeValue[RelationSet[BlockCtrl]], attributeFormDefault: SomeValue[Form], elementFormDefault: SomeValue[Form], defaultAttributes: Option[QName], xPathDefaultNamespace: SomeValue[XPathDefaultNamespace], lang: Option[String], compositions: Seq[Either[CompositionCmp, AnnotationElem]], defaultOpenContent: Option[DefaultOpenContentElem], schemaTop: Seq[Either[SchemaTopGroupElem, AnnotationElem]], openAttrs: Map[QName, String])
 
 case class SelectorElem(loc: Location, id: Option[String], annotation: Option[AnnotationElem], xPath: String, xPathDefaultNamespace: Option[XPathDefaultNamespace], openAttrs: Map[QName, String])
 
