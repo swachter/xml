@@ -6,7 +6,6 @@ import eu.swdev.xml.log._
 import eu.swdev.xml.name
 import eu.swdev.xml.name.Namespace
 import eu.swdev.xml.schema.Schema
-import eu.swdev.xml.xsd.instantiation.JobMod.SchemaImportHint
 
 /**
   */
@@ -38,7 +37,7 @@ trait SchemaLoader { self: SchemaParser with SchemaInstantiator =>
       (pLog, Option.empty[Schema])
     } {
       schemaElem => {
-        val (iLog, optSchema) = instantiate(schemaElem, schemaElem.targetNamespace.map(Namespace(_)).getOrElse(name.NoNamespace))
+        val (iLog, optSchema) = instantiate(schemaElem)
         (concat(iLog, pLog), optSchema)
       }
     }

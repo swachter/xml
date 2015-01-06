@@ -17,115 +17,117 @@ import scala.util.{Failure, Success, Try}
 /**
   */
 
-object JobMod {
+case class SchemaImportHint(schemaLocation: Option[String], baseUri: Option[URI])
 
-  case class Job[+A](run: State => Step[A]) { self =>
+case class JobConf(schemaElem: SchemaElem, optTargetNamespace: Option[Namespace]) {
+  def attributeFormDefault: Form = schemaElem.attributeFormDefault.value
+  val schemaTargetNamespace: Namespace = optTargetNamespace.orElse(schemaElem.targetNamespace.map(Namespace(_))).getOrElse(NoNamespace)
+  val importHints: Map[Namespace, SchemaImportHint] =
+    schemaElem.compositions.collect { case Left(ie: ImportElem) => ie } map ( ie => (ie.namespace.map(Namespace(_)).getOrElse(NoNamespace) -> SchemaImportHint(ie.schemaLocation, ie.baseUri))) toMap
+  def isChameleon: Boolean = optTargetNamespace.isDefined
+}
 
-    def map[B](f: A => B): Job[B] = Job { state => run(state) map f }
+object SchemaImportHint {
+  val None = SchemaImportHint(Option.empty, Option.empty)
+}
 
-    def flatMap[B](f: A => Job[B]): Job[B] = Job { state =>
+case class Job[+A](run: State => Step[A]) { self =>
 
-      def go(step: Step[A]): Step[B] = step match {
-        case Await(ref, rec) => Await(ref, rec andThen go)
-        case Done(a, s1) => f(a).run(s1)
-        case Abort(state) => Abort(state)
-        case Define(o, stage, next) => Define(o, stage, go(next))
-      }
+  def map[B](f: A => B): Job[B] = Job { state => run(state) map f }
 
-      go(run(state))
-    }
+  def flatMap[B](f: A => Job[B]): Job[B] = Job { state =>
 
-    def >>=[B](f: A => Job[B]) = this.flatMap(f)
-
-    def &[O2](p2: => Job[O2]): Job[(A, O2)] = for {
-      v1 <- this
-      v2 <- p2
-    } yield (v1, v2)
-
-    def filter(f: A => Boolean): Job[A] = withFilter(f)
-
-    def withFilter(f: A => Boolean): Job[A] = Job(state => {
-      run(state).filter(f)
-    })
-
-
-  }
-
-  object Job {
-
-    def unit[A](a: A) = Job { state => Done(a, state) }
-
-    def map2[A, B, C](ja: Job[A], jb: Job[B])(f: (A, B) => C): Job[C] = for {
-      a <- ja
-      b <- jb
-    } yield f(a, b)
-
-    def sequence[A](seq: Seq[Job[A]]): Job[Seq[A]] = seq.foldRight(unit(Seq[A]()))((job, acc) => map2(job, acc)(_ +: _))
-
-    def traverse[A, B](as: Seq[A])(f: A => Job[B]): Job[Seq[B]] =
-      as.foldRight(unit(Seq[B]()))((a, p) => map2(f(a), p)(_ +: _))
-  }
-
-  /**
-   *
-   * @tparam A The type of the final result.
-   */
-  trait Step[+A] {
-
-    def map[B](f: A => B): Step[B] = this match {
-      case Await(ref, rec) => Await(ref, rec andThen Step.lift(f))
-      case Done(a, state) => Done(f(a), state)
+    def go(step: Step[A]): Step[B] = step match {
+      case Await(ref, rec) => Await(ref, rec andThen go)
+      case Done(a, s1) => f(a).run(s1)
       case Abort(state) => Abort(state)
-      case Define(o, stage, next) => Define(o, stage, next map f)
+      case Define(o, stage, next) => Define(o, stage, go(next))
     }
 
-    def filter(f: A => Boolean): Step[A] = this match {
-      case Await(ref, rec) => Await(ref, rec andThen (step => step.filter(f)))
-      case Done(a, state) => if (f(a)) Done(a, state) else Abort(state)
-      case Abort(state) => Abort(state)
-      case Define(o, stage, next) => Define(o, stage, next filter f)
-    }
-
+    go(run(state))
   }
 
-  object Step {
-    def lift[A, B](f: A => B): Step[A] => Step[B] = sa => sa map f
+  def >>=[B](f: A => Job[B]) = this.flatMap(f)
+
+  def &[O2](p2: => Job[O2]): Job[(A, O2)] = for {
+    v1 <- this
+    v2 <- p2
+  } yield (v1, v2)
+
+  def filter(f: A => Boolean): Job[A] = withFilter(f)
+
+  def withFilter(f: A => Boolean): Job[A] = Job(state => {
+    run(state).filter(f)
+  })
+
+
+}
+
+object Job {
+
+  def unit[A](a: A) = Job { state => Done(a, state) }
+
+  def map2[A, B, C](ja: Job[A], jb: Job[B])(f: (A, B) => C): Job[C] = for {
+    a <- ja
+    b <- jb
+  } yield f(a, b)
+
+  def sequence[A](seq: Seq[Job[A]]): Job[Seq[A]] = seq.foldRight(unit(Seq[A]()))((job, acc) => map2(job, acc)(_ +: _))
+
+  def traverse[A, B](as: Seq[A])(f: A => Job[B]): Job[Seq[B]] =
+    as.foldRight(unit(Seq[B]()))((a, p) => map2(f(a), p)(_ +: _))
+}
+
+/**
+ *
+ * @tparam A The type of the final result.
+ */
+trait Step[+A] {
+
+  def map[B](f: A => B): Step[B] = this match {
+    case Await(ref, rec) => Await(ref, rec andThen Step.lift(f))
+    case Done(a, state) => Done(f(a), state)
+    case Abort(state) => Abort(state)
+    case Define(o, stage, next) => Define(o, stage, next map f)
   }
 
-  case class Await[A, I](ref: Ref[I], rec: Option[I] => Step[A]) extends Step[A]
-
-  case class Done[A](value: A, state: State) extends Step[A]
-
-  case class Abort(state: State) extends Step[Nothing]
-  
-  case class Define[A, O <: SchemaTopComponent](value: O, stage: Stage, next: Step[A]) extends Step[A]
-  
-  sealed trait Ref[X] {
-    def symbolSpace: SymbolSpace[X]
+  def filter(f: A => Boolean): Step[A] = this match {
+    case Await(ref, rec) => Await(ref, rec andThen (step => step.filter(f)))
+    case Done(a, state) => if (f(a)) Done(a, state) else Abort(state)
+    case Abort(state) => Abort(state)
+    case Define(o, stage, next) => Define(o, stage, next filter f)
   }
 
-  sealed case class LocalRef[X](symbolSpace: SymbolSpace[X], ncName: LocalName, stage: Stage) extends Ref[X]
+}
 
-  sealed case class GlobalRef[X](symbolSpace: SymbolSpace[X], qName: QName, importHint: SchemaImportHint) extends Ref[X]
+object Step {
+  def lift[A, B](f: A => B): Step[A] => Step[B] = sa => sa map f
+}
 
-  case class SchemaImportHint(schemaLocation: Option[String], baseUri: Option[URI])
+case class Await[A, I](ref: Ref[I], rec: Option[I] => Step[A]) extends Step[A]
 
-  object SchemaImportHint {
-    val None = SchemaImportHint(Option.empty, Option.empty)
-  }
-  
-  sealed trait Stage
+case class Done[A](value: A, state: State) extends Step[A]
 
-  case object Created extends Stage
-  case object Completed extends Stage
+case class Abort(state: State) extends Step[Nothing]
 
-  case class JobConf(schemaElem: SchemaElem, schemaTargetNamespace: Namespace) {
-    def attributeFormDefault: Form = schemaElem.attributeFormDefault.value
-    val importHints: Map[Namespace, SchemaImportHint] =
-      schemaElem.compositions.collect { case Left(ie: ImportElem) => ie } map ( ie => (ie.namespace.map(Namespace(_)).getOrElse(NoNamespace) -> SchemaImportHint(ie.schemaLocation, ie.baseUri))) toMap
-  }
-  
-  case class State(config: JobConf, log: Messages)
+case class Define[A, O <: SchemaTopComponent](value: O, stage: Stage, next: Step[A]) extends Step[A]
+
+sealed trait Ref[X] {
+  def symbolSpace: SymbolSpace[X]
+}
+
+sealed case class LocalRef[X](symbolSpace: SymbolSpace[X], ncName: LocalName, stage: Stage) extends Ref[X]
+
+sealed case class GlobalRef[X](symbolSpace: SymbolSpace[X], qName: QName, importHint: SchemaImportHint) extends Ref[X]
+
+sealed trait Stage
+
+case object Created extends Stage
+case object Completed extends Stage
+
+case class State(log: Messages)
+
+case class JobMod(conf: JobConf) {
 
   def addError(state: State, msg: Message): State = state.copy(log = log.prepend(msg, state.log))
 
@@ -145,12 +147,14 @@ object JobMod {
         case None => Abort(addError(state, s"unresolved reference - symbol space: ${ev.name}; name: $name"))
       })
 
-      if (name.namespace == state.config.schemaTargetNamespace) {
+      if (name.namespace == conf.schemaTargetNamespace) {
+        doAwait(LocalRef(ev, name.localName, stage))
+      } else if (name.namespace == NoNamespace && conf.isChameleon) {
         doAwait(LocalRef(ev, name.localName, stage))
       } else if (name.namespace == XsdNamespace) {
         doAwait(GlobalRef(ev, name, SchemaImportHint.None))
       } else {
-        state.config.importHints.get(name.namespace).fold[Step[A]] {
+        conf.importHints.get(name.namespace).fold[Step[A]] {
           Abort(addError(state, s"can not resolve symbol; namespace not imported - namespace: ${name.namespace}; local name: ${name.localName}; symbol space: ${ev.name}; location: $loc"))
         } {
           importHint => doAwait(GlobalRef(ev, name, importHint))
@@ -162,8 +166,6 @@ object JobMod {
 
   def define[O <: SchemaTopComponent](a: O, stage: Stage): Job[Unit] = Job { state => Define(a, stage, Done((), state)) }
 
-  def getConf: Job[JobConf] = Job { state => Done(state.config, state) }
-  
   //
   //
   //
@@ -179,8 +181,6 @@ object JobMod {
   } yield complexType
 
   def createComplexTypeJob(cmp: ComplexTypeElem): Job[(ComplexType, Job[Job[Unit]])] = for {
-    conf <- getConf
-    typeName <- qName(cmp.name)
     baseType <- await[Type](cmp.content.base, cmp.loc, Created)
     attrs <- attrsModelJob(cmp.content, if (cmp.defaultAttributesApply.value) conf.schemaElem.defaultAttributes else None)
     mergedAttrs <- mergeWithInheritedAttrs(attrs, baseType, cmp.content.derivationMethod)
@@ -188,8 +188,7 @@ object JobMod {
     block = cmp.block.getOrElse(conf.schemaElem.blockDefault.value).toSet[CtBlockCtrl]
     assertions <- assertionsJob(cmp.content)
     (contentModel, completeContentModelJob) <- contentModelJob(cmp.content, baseType, cmp.mixed)
-    ct = ComplexType(typeName, baseType, cmp.content.derivationMethod, attrs, contentModel, cmp.abstrct.value, finl, block, assertions)
-  } yield (ct, completeContentModelJob)
+  } yield (ComplexType(componentQName(cmp.name), baseType, cmp.content.derivationMethod, attrs, contentModel, cmp.abstrct.value, finl, block, assertions), completeContentModelJob)
 
   // 3.4.2.4 & 3.4.2.5
   def mergeWithInheritedAttrs(attrs: AttrsModel, baseType: Type, derivationMethod: CtDerivationCtrl): Job[AttrsModel] = {
@@ -244,16 +243,14 @@ object JobMod {
     Job.traverse(assertElems)(assertionJob(_))
   }
 
-  def assertionJob(ae: AssertElem): Job[Assertion] = for {
-    conf <- getConf
-  } yield {
+  def assertionJob(ae: AssertElem): Job[Assertion] = {
     val xPathDefaultNamespace = ae.xPathDefaultNamespace.getOrElse(conf.schemaElem.xPathDefaultNamespace.value) match {
       case XPathDefaultNamespace.Default => ae.namespaces.defaultNamespace
       case XPathDefaultNamespace.Target => conf.schemaTargetNamespace
       case XPathDefaultNamespace.Local => NoNamespace
       case XPathDefaultNamespace.Uri(uri) => Namespace(uri)
     }
-    Assertion(ae.test, xPathDefaultNamespace)
+    Job.unit(Assertion(ae.test, xPathDefaultNamespace))
   }
 
   def contentModelJob(content: ComplexTypeContentCmp, baseType: Type, ctMixed: Option[Boolean]): Job[(ContentType, Job[Job[Unit]])] = {
@@ -277,8 +274,7 @@ object JobMod {
             } {
               simpleTypeElem => simpleTypeJob(simpleTypeElem)
             }
-            typeName <- qName(DefaultValue(d.syntheticTypeName))
-            restricted <- simpleTypeRestriction(typeName, b, d.facetSpecs)
+            restricted <- simpleTypeRestriction(componentQName(d.syntheticTypeName), b, d.facetSpecs)
           } yield restricted
         }
         // 2
@@ -289,8 +285,7 @@ object JobMod {
             } {
               simpleTypeElem => simpleTypeJob(simpleTypeElem)
             }
-            typeName <- qName(DefaultValue(d.syntheticTypeName))
-            restricted <- simpleTypeRestriction(typeName, sb, d.facetSpecs)
+            restricted <- simpleTypeRestriction(componentQName(d.syntheticTypeName), sb, d.facetSpecs)
           } yield restricted
         }
         // 3
@@ -400,45 +395,41 @@ object JobMod {
       }
     }
 
-    explicitContentTypeJob >>= {
+    explicitContentTypeJob.map {
       case (explicitContentType, completionJob) => {
-        for {
-          conf <- getConf
-        } yield {
-          // 5
-          val optWildcardElement: Option[OpenContentCmp] = complexContent.openContent.orElse(conf.schemaElem.defaultOpenContent.filter(doc => {
-            !explicitContentType.isEmpty || doc.appliesToEmpty.value
-          }))
-          optWildcardElement.fold {
-            // 6.1
-            (explicitContentType, completionJob)
-          } {
-            wildcardElement => {
-              if (wildcardElement.mode.value == OpenContentMode.None) {
-                // 6.1
-                (explicitContentType, completionJob)
-              } else {
-                // 6.2
-                val w: Wildcard = wildcardElement.optAny.fold {
-                  // there is no <any> element inside openContent
-                  // -> use a wildcard that corresponds to an empty <any> element
-                  Wildcard(NamespaceConstraint.Any(DisallowedNames.empty), ProcessContents.Strict)
-                } {
-                  any => Wildcard(namespaceConstraint(any, conf.schemaTargetNamespace), any.processContents.value)
+        // 5
+        val optWildcardElement: Option[OpenContentCmp] = complexContent.openContent.orElse(conf.schemaElem.defaultOpenContent.filter(doc => {
+          !explicitContentType.isEmpty || doc.appliesToEmpty.value
+        }))
+        optWildcardElement.fold {
+          // 6.1
+          (explicitContentType, completionJob)
+        } {
+          wildcardElement => {
+            if (wildcardElement.mode.value == OpenContentMode.None) {
+              // 6.1
+              (explicitContentType, completionJob)
+            } else {
+              // 6.2
+              val w: Wildcard = wildcardElement.optAny.fold {
+                // there is no <any> element inside openContent
+                // -> use a wildcard that corresponds to an empty <any> element
+                Wildcard(NamespaceConstraint.Any(DisallowedNames.empty), ProcessContents.Strict)
+              } {
+                any => Wildcard(namespaceConstraint(any, conf.schemaTargetNamespace), any.processContents.value)
+              }
+              explicitContentType match {
+                case EmptyContentType => {
+                  val openContent = OpenContent(wildcardElement.mode.value, w)
+                  (ElementsContentType(SeqParticle(Occurs(1, MaxOccurs.one), Seq()), false, Some(openContent)), completionJob)
                 }
-                explicitContentType match {
-                  case EmptyContentType => {
-                    val openContent = OpenContent(wildcardElement.mode.value, w)
-                    (ElementsContentType(SeqParticle(Occurs(1, MaxOccurs.one), Seq()), false, Some(openContent)), completionJob)
+                case explicitContentType: ElementsContentType => {
+                  val openContent = explicitContentType.open.fold {
+                    OpenContent(wildcardElement.mode.value, w)
+                  } {
+                    openContent => OpenContent(wildcardElement.mode.value, Wildcard(openContent.wildcard.namespaceConstraint.union(w.namespaceConstraint), w.processContents))
                   }
-                  case explicitContentType: ElementsContentType => {
-                    val openContent = explicitContentType.open.fold {
-                      OpenContent(wildcardElement.mode.value, w)
-                    } {
-                      openContent => OpenContent(wildcardElement.mode.value, Wildcard(openContent.wildcard.namespaceConstraint.union(w.namespaceConstraint), w.processContents))
-                    }
-                    (explicitContentType.copy(open = Some(openContent)), completionJob)
-                  }
+                  (explicitContentType.copy(open = Some(openContent)), completionJob)
                 }
               }
             }
@@ -483,8 +474,7 @@ object JobMod {
 
   def groupDefJob(cmp: GroupDefElem): Job[GroupDef] = for {
     (groupParticle, continuation1) <- groupJob(cmp.particle)
-    name <- qName(cmp.name)
-    groupDef = GroupDef(name, groupParticle)
+    groupDef = GroupDef(componentQName(cmp.name), groupParticle)
     _ <- define(groupDef, Created)
     continuation2 <- continuation1
     _ <- define(groupDef, Completed)
@@ -525,9 +515,7 @@ object JobMod {
 
   def nestedParticleJob(cmp: NestedParticleCmp): Job[(NestedParticle, Job[Job[Unit]])] = {
     cmp match {
-      case cmp: AnyElem => for {
-        conf <- getConf
-      } yield (ElemWildcard(cmp.occurs, wildcard(cmp, conf.schemaTargetNamespace)), Job.unit(Job.unit(())))
+      case cmp: AnyElem => Job.unit(ElemWildcard(cmp.occurs, wildcard(cmp, conf.schemaTargetNamespace)), Job.unit(Job.unit(())))
       case cmp: ChoiceElem => genericGroupJob(cmp)(ChoiceParticle(_, _))
       case cmp: ElementElem => createElemDeclJob(cmp)
       case cmp: GroupRefElem => {
@@ -555,7 +543,6 @@ object JobMod {
     (cmp.name, cmp.ref) match {
       case (Some(name), _) => {
         for {
-          conf <- getConf
           identityConstraints <- Job.sequence(cmp.constraints.map(identityConstraint(_)))
           (elementType: Type, typeCompletionJob: Job[Job[Unit]]) <- cmp.inlinedType.map {
             // 1
@@ -585,28 +572,29 @@ object JobMod {
     cmp match {
       case cmp: KeyElem => cmp.refOrDef match {
         case Left(ref) => await[KeyConstraint](ref, cmp.loc)
-        case Right(keyDef) => for {
-          name <- qName(keyDef.name)
-          c = KeyConstraint(name, selector(keyDef.selector), keyDef.fields.map(field(_)))
-          _ <- define(c, Completed)
-        } yield c
+        case Right(keyDef) => {
+          val c = KeyConstraint(componentQName(keyDef.name), selector(keyDef.selector), keyDef.fields.map(field(_)))
+          for {
+            _ <- define(c, Completed)
+          } yield c
+        }
       }
       case cmp: KeyRefElem => cmp.refOrDef match {
         case Left(ref) => await[KeyRefConstraint](ref, cmp.loc)
         case Right(keyDef) => for {
-          name <- qName(keyDef.name)
           referencedKey <- await[KeyOrUniqueConstraint](keyDef.refer, cmp.loc)
-          c = KeyRefConstraint(name, selector(keyDef.selector), keyDef.fields.map(field(_)), referencedKey)
+          c = KeyRefConstraint(componentQName(keyDef.name), selector(keyDef.selector), keyDef.fields.map(field(_)), referencedKey)
           _ <- define(c, Completed)
         } yield c
       }
       case cmp: UniqueElem => cmp.refOrDef match {
         case Left(ref) => await[UniqueConstraint](ref, cmp.loc)
-        case Right(keyDef) => for {
-          name <- qName(keyDef.name)
-          c = UniqueConstraint(name, selector(keyDef.selector), keyDef.fields.map(field(_)))
-          _ <- define(c, Completed)
-        } yield c
+        case Right(keyDef) => {
+          val c = UniqueConstraint(componentQName(keyDef.name), selector(keyDef.selector), keyDef.fields.map(field(_)))
+          for {
+            _ <- define(c, Completed)
+          } yield c
+        }
       }
     }
   }
@@ -615,9 +603,8 @@ object JobMod {
   def field(cmp: FieldElem): String = cmp.xPath
 
   def attrGroupJob(cmp: AttributeGroupDefElem): Job[AttrGroup] = for {
-    name <- qName(cmp.name)
     attrsModel <- attrsModelJob2(cmp.attrs, cmp.anyAttribute)
-  } yield AttrGroup(name, attrsModel)
+  } yield AttrGroup(componentQName(cmp.name), attrsModel)
 
   def attrsModelJob(cmp: ComplexTypeContentCmp, defaultAttributes: Option[QName]): Job[AttrsModel] = {
     val job: Job[AttrsModel] = cmp match {
@@ -662,16 +649,11 @@ object JobMod {
   }
 
   // 3.10.2.2
-  def attrsModelJob(anyAttribute: AnyAttributeElem): Job[AttrsModel] = for {
-    conf <- getConf
-  } yield {
-    AttrsModel(Map(), Some(wildcard(anyAttribute, conf.schemaTargetNamespace)))
-  }
+  def attrsModelJob(anyAttribute: AnyAttributeElem): Job[AttrsModel] = Job.unit(AttrsModel(Map(), Some(wildcard(anyAttribute, conf.schemaTargetNamespace))))
 
   // 3.2.2.2
   def attrDeclJob(cmp: AttributeCmp): Job[AttrDecl] = (cmp.name, cmp.ref) match {
     case (Some(an), _) => for {
-      conf <- getConf
       simpleType <- simpleTypeJob(cmp)
     } yield {
       val namespace = (cmp.form, conf.schemaElem.attributeFormDefault.value) match {
@@ -694,18 +676,15 @@ object JobMod {
   // part 2; 4.1.2
   def simpleTypeJob(st: SimpleTypeElem): Job[SimpleType] = st.derivation match {
     case d: SimpleTypeRestrictionElem => for {
-      typeName <- qName(st.name)
       baseType <- d.base.fold(simpleTypeJob(d.tpe.get))(await[SimpleType](_, d.loc))
-      restrictedType <- simpleTypeRestriction(typeName, baseType, d.facetSpecs)
+      restrictedType <- simpleTypeRestriction(componentQName(st.name), baseType, d.facetSpecs)
     } yield restrictedType
     case d: ListElem => for {
-      typeName <- qName(st.name)
       itemType <- d.itemType.fold(simpleTypeJob(d.simpleType.get))(await[SimpleType](_, d.loc))
-    } yield ListType(typeName, anySimpleType, Facets.withWspCollapse[ListVal], itemType)
+    } yield ListType(componentQName(st.name), anySimpleType, Facets.withWspCollapse[ListVal], itemType)
     case d: UnionElem => for {
-      typeName <- qName(st.name)
       memberTypes <- d.memberTypes.fold(Job.unit(Seq[SimpleType]()))(qns => Job.traverse(qns)(await[SimpleType](_, d.loc))) & Job.traverse(d.simpleTypes)(simpleTypeJob(_))
-    } yield UnionType(typeName, anySimpleType, Facets.empty[SimpleVal], memberTypes._1 ++ memberTypes._2)
+    } yield UnionType(componentQName(st.name), anySimpleType, Facets.empty[SimpleVal], memberTypes._1 ++ memberTypes._2)
   }
 
   def simpleTypeRestriction(typeName: QName, simpleType: SimpleType, facetSpecs: Seq[FacetCmp]): Job[SimpleType] = {
@@ -836,11 +815,9 @@ object JobMod {
   }
 
   // part 2; 4.1.2
-  def qName(someName: SomeValue[String]): Job[QName] = qName(someName.value)
+  def componentQName(someName: SomeValue[String]): QName = componentQName(someName.value)
 
-  def qName(name: String): Job[QName] = for {
-    conf <- getConf
-  } yield QNameFactory.caching(conf.schemaTargetNamespace, LocalName(name))
+  def componentQName(name: String): QName = QNameFactory.caching(conf.schemaTargetNamespace, LocalName(name))
 
   def convertNamespaceTokens(list: List[NamespaceItemToken], conf: JobConf): Set[Namespace] = {
     list.map {

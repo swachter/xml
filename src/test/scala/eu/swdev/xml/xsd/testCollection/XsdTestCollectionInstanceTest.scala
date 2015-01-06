@@ -5,13 +5,10 @@ import javax.xml.stream.XMLInputFactory
 import javax.xml.transform.stream.StreamSource
 
 import eu.swdev.xml.log._
-import eu.swdev.xml.name.Namespace
 import eu.swdev.xml.pushparser.XmlEventReaderInputs
 import eu.swdev.xml.schema.Schema
-import eu.swdev.xml.xsd.instantiation.JobMod.SchemaImportHint
 import eu.swdev.xml.xsd.instantiation._
 import eu.swdev.xml.xsd.parser.XsdPushParserMod
-import eu.swdev.xml.xsd.testCollection.XsdTestCollectionParser._
 import org.scalatest.{FunSuite, Inside}
 
 /**
@@ -39,7 +36,10 @@ class XsdTestCollectionInstanceTest extends FunSuite with Inside {
     override val xsdParsers = new XsdPushParserMod with XmlEventReaderInputs {}
 
     override def resolveInclude(schemaLocation: String, baseUri: Option[URI]): (Messages, Option[(xsdParsers.DriveInputs, Option[URI])]) = {
-      (prepend(s"can not resolve schema for schema location: $schemaLocation", emptyMessages), None)
+      val uri = baseUri.map(_.resolve(schemaLocation)).getOrElse(new URI(schemaLocation))
+      val source = new StreamSource(uri.toURL.toExternalForm)
+      val inputs = xsdParsers.inputs(source)
+      (emptyMessages, Some((inputs, Some(uri))))
     }
 
     def parse(uri: URI): (Messages, Option[Schema]) = {

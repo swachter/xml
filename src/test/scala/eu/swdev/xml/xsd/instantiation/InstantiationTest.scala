@@ -8,7 +8,6 @@ import eu.swdev.xml.log._
 import eu.swdev.xml.name.{LocalName, Namespace}
 import eu.swdev.xml.pushparser.XmlEventReaderInputs
 import eu.swdev.xml.schema.{Type, Schema}
-import eu.swdev.xml.xsd.instantiation.JobMod.SchemaImportHint
 import eu.swdev.xml.xsd.parser.XsdPushParserMod
 import org.scalatest.{Inside, FunSuite}
 
