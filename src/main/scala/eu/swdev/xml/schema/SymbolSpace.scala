@@ -33,6 +33,9 @@ object SymbolSpace {
     type SymbolType = IdentityConstraint
     def name = "identity constraint"
   }
-  //implicit val Notation extends SymbolSpace[Notation]
+  implicit val Notation = new SymbolSpace[Notation] {
+    type SymbolType = Notation
+    def name = "notation"
+  }
 }
 

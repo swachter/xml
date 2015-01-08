@@ -15,25 +15,25 @@ import org.scalatest.{Inside, FunSuite}
   */
 class InstantiationTest extends FunSuite with Inside {
 
-  test("simple types") {
+  object sut extends SchemaInstantiator with SchemaParser with SimpleSchemaStore with StdResolveImport with SchemaLoader {
 
-    object sut extends SchemaInstantiator with SchemaParser with SimpleSchemaStore with StdResolveImport with SchemaLoader {
+    override def builtInSchemas: Iterable[Schema] = Seq(Schema.builtInSchema)
 
-      override def builtInSchemas: Iterable[Schema] = Seq(Schema.builtInSchema)
+    override val xsdParsers = new XsdPushParserMod with XmlEventReaderInputs {}
 
-      override val xsdParsers = new XsdPushParserMod with XmlEventReaderInputs {}
-
-      override def resolveInclude(schemaLocation: String, baseUri: Option[URI]): (Messages, Option[(xsdParsers.DriveInputs, Option[URI])]) = {
-        (prepend(s"can not resolve schema for schema location: $schemaLocation", emptyMessages), None)
-      }
-
-      def parse(string: String): (Messages, Option[Schema]) = {
-        val source = new StreamSource(new StringReader(string))
-        val inputs = xsdParsers.inputs(source)
-        loadSchema(inputs, None)
-      }
-
+    override def resolveInclude(schemaLocation: String, baseUri: Option[URI]): (Messages, Option[(xsdParsers.DriveInputs, Option[URI])]) = {
+      (prepend(s"can not resolve schema for schema location: $schemaLocation", emptyMessages), None)
     }
+
+    def parse(string: String): (Messages, Option[Schema]) = {
+      val source = new StreamSource(new StringReader(string))
+      val inputs = xsdParsers.inputs(source)
+      loadSchema(inputs, None)
+    }
+
+  }
+
+  test("simple types") {
 
     inside(sut.parse(
       """
@@ -73,5 +73,32 @@ class InstantiationTest extends FunSuite with Inside {
         assert(schema.symbolTable.get[Type](LocalName("union")).isDefined)
       }
     }
+  }
+
+  test("wildcard restriction") {
+    // msData/wildcards/wildZ008.xsd
+    inside(sut.parse(
+      """
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+ <xs:complexType name="A">
+  <xs:sequence>
+   <xs:any processContents="strict" namespace="##any" />
+  </xs:sequence>
+ </xs:complexType>
+
+ <xs:complexType name="B">
+  <xs:complexContent>
+  <xs:restriction base="A">
+   <xs:sequence>
+    <xs:any processContents="skip" namespace="http://www.example.com" />
+   </xs:sequence>
+  </xs:restriction>
+  </xs:complexContent>
+ </xs:complexType>
+</xs:schema>
+      """)) {
+      case (h :: _, Some(_)) =>
+    }
+
   }
 }

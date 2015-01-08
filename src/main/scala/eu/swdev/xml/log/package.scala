@@ -9,6 +9,7 @@ package object log {
 
   def prepend(msg: Message, msgs: Messages): Messages = msg :: msgs
   def concat(msgs: Messages*): Messages = msgs.foldRight(emptyMessages)(_ ++ _)
+  def concat(msgs: Iterable[Message]): Messages = msgs.iterator.foldRight(emptyMessages)(prepend(_, _))
   def join(msgs: Seq[Messages]): Messages = msgs.foldRight(emptyMessages)(_ ++ _)
   def isEmpty(msgs: Messages): Boolean = msgs.isEmpty
 

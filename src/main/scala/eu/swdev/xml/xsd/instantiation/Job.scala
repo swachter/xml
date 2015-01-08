@@ -366,12 +366,12 @@ case class JobMod(conf: JobConf) {
 
             val particleJob: Job[(GroupParticle, Job[Job[Unit]])] = baseContentType.group match {
               // 4.2.3.1
-              case baseParticle: AllGroupParticle if (explicitContent.isEmpty) => Job.unit(baseParticle, Job.unit(Job.unit(())))
+              case baseParticle: AllParticle if (explicitContent.isEmpty) => Job.unit(baseParticle, Job.unit(Job.unit(())))
               // 4.2.3.2 & 4.2.3.3
-              case baseParticle: AllGroupParticle if (explicitContent.isDefined) => {
+              case baseParticle: AllParticle if (explicitContent.isDefined) => {
                 groupJob(effectiveContent.get).map {
                   // 4.2.3.2
-                  case (groupParticle: AllGroupParticle, completionJob) => (AllGroupParticle(Occurs(effectiveContent.get.occurs.min, MaxOccurs.one), baseParticle.nested ++ groupParticle.nested), completionJob)
+                  case (groupParticle: AllParticle, completionJob) => (AllParticle(Occurs(effectiveContent.get.occurs.min, MaxOccurs.one), baseParticle.nested ++ groupParticle.nested), completionJob)
                   // 4.2.3.3
                   case (groupParticle, completionJob) => (SeqParticle(Occurs.once, Seq(baseParticle, groupParticle)), completionJob)
                 }
@@ -472,6 +472,13 @@ case class JobMod(conf: JobConf) {
 
   }
 
+  def notationJob(cmp: NotationElem): Job[Notation] = (cmp.publ, cmp.system) match {
+    case (p@Some(_), s@Some(_)) => Job.unit(Notation(componentQName(cmp.name), SysPubId.BothIds(p, s)))
+    case (p@Some(_), _) => Job.unit(Notation(componentQName(cmp.name), SysPubId.PubId(p)))
+    case (_, s@Some(_)) => Job.unit(Notation(componentQName(cmp.name), SysPubId.SysId(s)))
+    case (None, None) => abort(s"notation needs systemId or publicId")
+  }
+
   def groupDefJob(cmp: GroupDefElem): Job[GroupDef] = for {
     (groupParticle, continuation1) <- groupJob(cmp.particle)
     groupDef = GroupDef(componentQName(cmp.name), groupParticle)
@@ -494,7 +501,7 @@ case class JobMod(conf: JobConf) {
 
   def groupJob(particleCmp: TypeDefParticleCmp): Job[(GroupParticle, Job[Job[Unit]])] = {
     particleCmp match {
-      case cmp: AllElem => genericGroupJob(cmp)(AllGroupParticle(_, _))
+      case cmp: AllElem => genericGroupJob(cmp)(AllParticle(_, _))
       case cmp: ChoiceElem => genericGroupJob(cmp)(ChoiceParticle(_, _))
       case cmp: SequenceElem => genericGroupJob(cmp)(SeqParticle(_, _))
       case cmp: GroupRefElem => {

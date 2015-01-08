@@ -2,6 +2,7 @@ package eu.swdev.xml.xsd.instantiation
 
 import java.util
 
+import eu.swdev.xml.fsm.RestrictionCheck
 import eu.swdev.xml.log._
 import eu.swdev.xml.name.{LocalName, QName, Namespace}
 import eu.swdev.xml.schema._
@@ -55,7 +56,7 @@ trait SchemaInstantiator { self: SchemaStore with SchemaResolver with SchemaPars
         case e: ComplexTypeElem => complexTypeJob(e)
         case e: ElementElem => elemDeclJob(e)
         case e: GroupDefElem => groupDefJob(e)
-        case e: NotationElem => ???
+        case e: NotationElem => notationJob(e)
         case e: SimpleTypeElem => simpleTypeJob(e)
       }
     }
@@ -210,6 +211,7 @@ trait SchemaInstantiator { self: SchemaStore with SchemaResolver with SchemaPars
         case c: AttrDecl => (c.name.localName, SymbolSpace.AttrDecl.asInstanceOf[SymbolSpace[A]])
         case c: AttrGroup => (c.name.localName, SymbolSpace.AttrGroup.asInstanceOf[SymbolSpace[A]])
         case c: IdentityConstraint => (c.name.localName, SymbolSpace.IdentityConstraint.asInstanceOf[SymbolSpace[A]])
+        case c: Notation => (c.name.localName, SymbolSpace.Notation.asInstanceOf[SymbolSpace[A]])
       }
     }
 
@@ -241,7 +243,13 @@ trait SchemaInstantiator { self: SchemaStore with SchemaResolver with SchemaPars
       add(entry)
     })
 
-    (finalState.log, Some(Schema(jobConf.schemaTargetNamespace, symbolTable)))
+    // TODO validations
+    val validationMsgs = symbolTable.underlying.keys.map(key => key._2 match {
+      case SymbolSpace.Type => validate(symbolTable.get(key._1)(SymbolSpace.Type).get)
+      case _ => Iterator.empty
+    }).flatten
+
+    (concat(finalState.log, concat(validationMsgs)), Some(Schema(jobConf.schemaTargetNamespace, symbolTable)))
 
   }
 
@@ -249,4 +257,22 @@ trait SchemaInstantiator { self: SchemaStore with SchemaResolver with SchemaPars
 
 }
 
-
+object validate {
+  def apply(tpe: Type): Iterable[Message] = {
+    tpe match {
+      case tpe: ComplexType => tpe.content match {
+        case cnt: ElementsContentType => tpe.baseType match {
+          case bt: ComplexType => bt.content match {
+            case bcnt: ElementsContentType => {
+              RestrictionCheck.isValid(bcnt.group, cnt.group)
+            }
+            case _ => Nil
+          }
+          case _ => Nil
+        }
+        case _ => Nil
+      }
+      case _ => Nil
+    }
+  }
+}

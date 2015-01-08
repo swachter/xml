@@ -83,7 +83,7 @@ sealed case class ChoiceParticle(occurs: Occurs, nested: Seq[Particle]) extends 
   override def withOccurs(o: Occurs) = copy(occurs = o)
 }
 
-sealed case class AllGroupParticle(occurs: Occurs, nested: Seq[Particle]) extends GroupParticle with SeqAllEffectiveTotalRange {
+sealed case class AllParticle(occurs: Occurs, nested: Seq[Particle]) extends GroupParticle with SeqAllEffectiveTotalRange {
   override def withOccurs(o: Occurs) = copy(occurs = o)
 }
 

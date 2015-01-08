@@ -5,7 +5,7 @@ import eu.swdev.xml.name.{LocalName, Namespace}
 
 trait SchemaTopComponent
 
-class SymbolTable private (underlying: Map[(LocalName, SymbolSpace[_]), Any]) {
+class SymbolTable private (val underlying: Map[(LocalName, SymbolSpace[_]), Any]) {
 
   def +[X](kv: (LocalName, X))(implicit ev: SymbolSpace[X]): SymbolTable = new SymbolTable(underlying + ((kv._1, ev) -> kv._2))
   def get[X](name: LocalName)(implicit ev: SymbolSpace[X]): Option[ev.SymbolType] = underlying.get((name, ev)).asInstanceOf[Option[ev.SymbolType]]

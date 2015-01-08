@@ -133,6 +133,25 @@ sealed trait NamespaceConstraint {
     }
   }
 
+  // 3.10.6.2
+  def isSubsetOf(that: NamespaceConstraint): Boolean = {
+    val b1 = (this, that) match {
+      // 1
+      case (_, NamespaceConstraint.Any(_)) => true
+      // 2
+      case (NamespaceConstraint.Enum(_, set1), NamespaceConstraint.Enum(_, set2)) => set1.forall(set2.contains(_))
+      // 3
+      case (NamespaceConstraint.Enum(_, set1), NamespaceConstraint.Not(_, set2)) => set1.intersect(set2).isEmpty
+      // 4
+      case (NamespaceConstraint.Not(_, set1), NamespaceConstraint.Not(_, set2)) => set2.forall(set1.contains(_))
+      case _ => false
+    }
+    b1 &&
+      that.disallowedNames.names.forall(!isAllowed(_)) && // 1
+      (!that.disallowedNames.defined || disallowedNames.defined) && // 2
+      (!that.disallowedNames.sibling || disallowedNames.sibling) // 3
+  }
+
   def withDisallowedNames(disallowedNames: DisallowedNames): NamespaceConstraint
 
   private def anyOrNot(disallowedNames: DisallowedNames, set: Set[Namespace]): NamespaceConstraint =
@@ -169,12 +188,27 @@ object OpenContentMode {
 
 case class OpenContent(mode: OpenContentMode, wildcard: Wildcard)
 
-sealed trait ProcessContents
+sealed trait ProcessContents {
+  def isRestrictionOf(that: ProcessContents): Boolean
+}
 
 object ProcessContents {
-  object Strict extends ProcessContents
-  object Lax extends ProcessContents
-  object Skip extends ProcessContents
+  object Strict extends ProcessContents {
+    override def isRestrictionOf(that: ProcessContents) = true
+  }
+  object Lax extends ProcessContents {
+    override def isRestrictionOf(that: ProcessContents) = that match {
+      case Strict => false
+      case _ => true
+    }
+
+  }
+  object Skip extends ProcessContents {
+    override def isRestrictionOf(that: ProcessContents) = that match {
+      case Skip => true
+      case _ => false
+    }
+  }
 }
 
 sealed trait QNameItem // xs:qnameList
@@ -223,3 +257,20 @@ sealed trait KeyOrUniqueConstraint extends IdentityConstraint
 case class KeyConstraint(name: QName, selector: String, fields: Seq[String]) extends KeyOrUniqueConstraint
 case class UniqueConstraint(name: QName, selector: String, fields: Seq[String]) extends KeyOrUniqueConstraint
 case class KeyRefConstraint(name: QName, selector: String, fields: Seq[String], referencedKey: KeyOrUniqueConstraint) extends IdentityConstraint
+
+case class Notation(name: QName, identifier: SysPubId) extends SchemaTopComponent
+
+trait SysPubId {
+  def sysId: Option[URI]
+  def pubId: Option[String]
+}
+
+object SysPubId {
+  case class PubId(pubId: Some[String]) extends SysPubId {
+    def sysId = None
+  }
+  case class SysId(sysId: Some[URI]) extends SysPubId {
+    def pubId = None
+  }
+  case class BothIds(pubId: Some[String], sysId: Some[URI]) extends SysPubId
+}
