@@ -126,7 +126,59 @@ class InstantiationTest extends FunSuite with Inside {
       """)) {
       case (Nil, Some(_)) =>
     }
+  }
 
+  test("msData/particles/particlesId012.xsd") {
+    inside(sut.parse(
+      """
+ <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" targetNamespace="http://xsdtesting" xmlns:x="http://xsdtesting" elementFormDefault="qualified">
+        <xsd:complexType name="base">
+                <xsd:choice>
+                        <xsd:element name="e1" minOccurs="2" maxOccurs="2"/>
+                        <xsd:element name="e2" minOccurs="1"/>
+                </xsd:choice>
+        </xsd:complexType>
+        <xsd:complexType name="testing">
+                <xsd:complexContent>
+                        <xsd:restriction base="x:base">
+                                <xsd:choice>
+                                        <xsd:element name="e1"/>
+                                        <xsd:element name="e2"/>
+                                </xsd:choice>
+                        </xsd:restriction>
+                </xsd:complexContent>
+        </xsd:complexType>
+</xsd:schema>
+      """)) {
+      case (_ :: _, Some(_)) =>
+    }
+  }
+
+  test("msData/particles/particlesIe003.xsd") {
+    inside(sut.parse(
+      """
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" targetNamespace="http://xsdtesting" xmlns:x="http://xsdtesting" elementFormDefault="qualified">
+        <xsd:complexType name="base">
+                <xsd:choice>
+                        <xsd:element name="e1" minOccurs="0" maxOccurs="unbounded"/>
+                        <xsd:element name="e2" minOccurs="0" maxOccurs="unbounded"/>
+                </xsd:choice>
+        </xsd:complexType>
+        <xsd:complexType name="testing">
+                <xsd:complexContent>
+                        <xsd:restriction base="x:base">
+                                <xsd:choice>
+                                        <xsd:element name="e1" minOccurs="1" maxOccurs="9999999"/>
+                                        <xsd:element name="e2" minOccurs="1" maxOccurs="9999999"/>
+                                </xsd:choice>
+                        </xsd:restriction>
+                </xsd:complexContent>
+        </xsd:complexType>
+        <xsd:element name="doc" type="x:testing"/>
+</xsd:schema>
+      """)) {
+      case (Nil, Some(_)) =>
+    }
   }
 
 }

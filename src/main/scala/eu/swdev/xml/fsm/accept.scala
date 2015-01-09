@@ -172,9 +172,9 @@ case class Determinized(acceptor: Acceptor) extends StateMachine[NonEpsilonTrans
   
   val stateNumber = scala.collection.mutable.Map[Set[Int], Int]()
 
-  traverse(expand(Set(acceptor.startState), Seq(acceptor.startState)))
+  traverse(epsilonClosure(Set(acceptor.startState), Seq(acceptor.startState)))
 
-  def expand(stateSet: Set[Int], newStates: Seq[Int]): Set[Int] = {
+  def epsilonClosure(stateSet: Set[Int], newStates: Seq[Int]): Set[Int] = {
     newStates.foldLeft(stateSet)((ss,  state) => {
       val statesReachableByEpsilonTransition = acceptor.transitions(state).collect {
         case EpsilonTransition(to) if (!ss.contains(to)) => to
@@ -182,7 +182,7 @@ case class Determinized(acceptor: Acceptor) extends StateMachine[NonEpsilonTrans
       if (statesReachableByEpsilonTransition.isEmpty) {
         ss
       } else {
-        expand(ss ++ statesReachableByEpsilonTransition, statesReachableByEpsilonTransition)
+        epsilonClosure(ss ++ statesReachableByEpsilonTransition, statesReachableByEpsilonTransition)
       }
     })
   }
@@ -205,9 +205,9 @@ case class Determinized(acceptor: Acceptor) extends StateMachine[NonEpsilonTrans
       isAccepting += fromSet.contains(acceptor.endState)
       
       // add transitions for all transitions starting at the "from" set
-      // epsilon transitions are ignored; their target state is contained in the "from" set (because the "from" set is expanded)
+      // epsilon transitions are ignored; their target state is contained in the "from" set (because the "from" set is an epsilon closure)
       fromSet.flatMap(s => acceptor.transitions(s)).collect { case t: NonEpsilonTransition => t }.foreach(t => {
-        val to = traverse(expand(Set(t.toState), Seq(t.toState)))
+        val to = traverse(epsilonClosure(Set(t.toState), Seq(t.toState)))
         t match {
           case DeclTransition(_, decl) => addTransition(next, DeclTransition(to, decl))
           case WildcardTransition(_, wildcard) => addTransition(next, WildcardTransition(to, wildcard))
@@ -302,7 +302,10 @@ object RestrictionCheck {
               optBaseTrans.fold[Option[String]] {
                 Some(s"invalid restriction - particle does not match base content model: $h")
               } {
-                _ => go(t)
+                // a corresponding transition exists in the base state machine
+                // -> check the remaining restricted transitions and then search if following the transitions in the
+                // base / restricted machine detects an error
+                baseTrans => go(t).orElse(search(baseTrans.toState, h.toState))
               }
             }
             case _ => {

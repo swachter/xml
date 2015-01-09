@@ -260,7 +260,7 @@ trait SchemaInstantiator { self: SchemaStore with SchemaResolver with SchemaPars
 object validate {
   def apply(tpe: Type): Iterable[Message] = {
     tpe match {
-      case tpe: ComplexType => tpe.content match {
+      case tpe: ComplexType if (tpe.derivation == Relation.Restriction) => tpe.content match {
         case cnt: ElementsContentType => tpe.baseType match {
           case bt: ComplexType => bt.content match {
             case bcnt: ElementsContentType => {
