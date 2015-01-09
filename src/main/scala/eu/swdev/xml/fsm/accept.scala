@@ -42,11 +42,13 @@ case class Acceptor(particle: Particle) extends StateMachine[Transition] {
    * Let p be a particle. The following examples show what transitions and states are introduced for certain min and max
    * constraints. Epsilon transitions are represented by --e--> and particle transitions by --p-->
    *
-   * p*: from --e--> to  // allows zero occurrences
-   *     to --p--> to    // allows an unbounded number of occurrences
+   * p*: from --e--> u   // allows zero occurrences
+   *     u    --p--> u   // allows an unbounded number of occurrences
+   *     u    --e--> to  // end
    *
-   * p+: from --p--> to  // requires at least one occurrence
-   *     to --p--> to    // allows an unbounded number of occurrences
+   * p+: from --p--> u   // requires at least one occurrence
+   *     u    --p--> u   // allows an unbounded number of occurrences
+   *     u    --e--> to  // end
    *
    * p?: from --p--> to  // allows one occurrence
    *     from --e--> to  // allows zero occurrences
@@ -55,19 +57,24 @@ case class Acceptor(particle: Particle) extends StateMachine[Transition] {
    *     from --p--> u   // requires the first occurrence
    *     u    --p--> v   // requires the second occurrence
    *     v    --p--> to  // requires the third occurrence
-   *     u --e--> to     // allows to skip to the end after the first occurrence
-   *     v --e--> to     // allows to skip to the end after the second occurrence
+   *     u    --e--> to  // allows to skip to the end after the first occurrence
+   *     v    --e--> to  // allows to skip to the end after the second occurrence
    *
    *
    * @param from
-   * @param to
+   * @param pto
    * @param particle
    */
-  def linkStatesByParticleOccurrence(from: Int, to: Int, particle: Particle): Unit = {
+  def linkStatesByParticleOccurrence(from: Int, pto: Int, particle: Particle): Unit = {
 
-    val (nbParticleSteps, nbEpsilonSteps) = particle.occurs match {
-      case Occurs(min, MaxOccurs.Unbounded) => (min, 0)
-      case Occurs(min, MaxOccurs.Bounded(max)) => (max, max - min)
+    val (nbParticleSteps, nbEpsilonSteps, to) = particle.occurs match {
+      case Occurs(min, MaxOccurs.Unbounded) => {
+        val to = addState
+        linkStatesByParticle(to, to, particle)
+        addTransition(to, EpsilonTransition(pto))
+        (min, 0, to)
+      }
+      case Occurs(min, MaxOccurs.Bounded(max)) => (max, max - min, pto)
     }
 
     nbParticleSteps match {
@@ -98,9 +105,6 @@ case class Acceptor(particle: Particle) extends StateMachine[Transition] {
       }
     }
 
-    if (particle.occurs.max.isUnbounded) {
-      linkStatesByParticle(to, to, particle)
-    }
   }
 
   /**
@@ -201,12 +205,12 @@ case class Determinized(acceptor: Acceptor) extends StateMachine[NonEpsilonTrans
       isAccepting += fromSet.contains(acceptor.endState)
       
       // add transitions for all transitions starting at the "from" set
-      fromSet.flatMap(s => acceptor.transitions(s)).foreach(t => {
+      // epsilon transitions are ignored; their target state is contained in the "from" set (because the "from" set is expanded)
+      fromSet.flatMap(s => acceptor.transitions(s)).collect { case t: NonEpsilonTransition => t }.foreach(t => {
         val to = traverse(expand(Set(t.toState), Seq(t.toState)))
         t match {
           case DeclTransition(_, decl) => addTransition(next, DeclTransition(to, decl))
           case WildcardTransition(_, wildcard) => addTransition(next, WildcardTransition(to, wildcard))
-          case t: EpsilonTransition => // epsilon transitions are ignored; their target state is part of the "from" set because it was expanded
         }
       })
 
@@ -259,7 +263,7 @@ object Transition {
   }
 
   def isRestriction(baseTrans: NonEpsilonTransition, restTrans: NonEpsilonTransition): Boolean = (baseTrans, restTrans) match {
-    case (DeclTransition(_, d1), DeclTransition(_, d2)) => d1 == d2
+    case (DeclTransition(_, d1), DeclTransition(_, d2)) => d1.name == d2.name
     case (WildcardTransition(_, w1), WildcardTransition(_, w2)) => {
       w2.namespaceConstraint.isSubsetOf(w1.namespaceConstraint) && w2.processContents.isRestrictionOf(w1.processContents)
     }
@@ -301,7 +305,13 @@ object RestrictionCheck {
                 _ => go(t)
               }
             }
-            case _ => None
+            case _ => {
+              if (restDeterminized.isAccepting(restState) && !baseDeterminized.isAccepting(baseState)) {
+                Some(s"invalid restriction - restricted content model ends in an accepting state whereas the base content model doesn't")
+              } else {
+                None
+              }
+            }
           }
         }
         go(restDeterminized.transitions(restState).toList)

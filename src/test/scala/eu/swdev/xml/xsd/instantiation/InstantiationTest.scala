@@ -75,8 +75,7 @@ class InstantiationTest extends FunSuite with Inside {
     }
   }
 
-  test("wildcard restriction") {
-    // msData/wildcards/wildZ008.xsd
+  test("msData/wildcards/wildZ008.xsd") {
     inside(sut.parse(
       """
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
@@ -101,4 +100,33 @@ class InstantiationTest extends FunSuite with Inside {
     }
 
   }
+
+  test("msData/particles/particlesIe002.xsd") {
+    inside(sut.parse(
+      """
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" targetNamespace="http://xsdtesting" xmlns:x="http://xsdtesting" elementFormDefault="qualified">
+        <xsd:complexType name="base">
+                <xsd:choice>
+                        <xsd:element name="e1" minOccurs="0" maxOccurs="unbounded"/>
+                        <xsd:element name="e2" minOccurs="0" maxOccurs="unbounded"/>
+                </xsd:choice>
+        </xsd:complexType>
+        <xsd:complexType name="testing">
+                <xsd:complexContent>
+                        <xsd:restriction base="x:base">
+                                <xsd:choice>
+                                        <xsd:element name="e1" minOccurs="0" maxOccurs="1"/>
+                                        <xsd:element name="e2" minOccurs="0" maxOccurs="1"/>
+                                </xsd:choice>
+                        </xsd:restriction>
+                </xsd:complexContent>
+        </xsd:complexType>
+        <xsd:element name="doc" type="x:testing"/>
+</xsd:schema>
+      """)) {
+      case (Nil, Some(_)) =>
+    }
+
+  }
+
 }
