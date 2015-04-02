@@ -154,7 +154,7 @@ class InstantiationTest extends FunSuite with Inside {
     }
   }
 
-  test("msData/particles/particlesIe003.xsd") {
+  test("") {
     inside(sut.parse(
       """
 <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" targetNamespace="http://xsdtesting" xmlns:x="http://xsdtesting" elementFormDefault="qualified">

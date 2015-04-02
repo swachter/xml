@@ -1,23 +1,12 @@
-package eu.swdev.xml.fsm
+package eu.swdev.xml.fsm.std
 
+import eu.swdev.xml.fsm.StateMachine
 import eu.swdev.xml.schema._
 
+import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
 
-trait StateMachine[T <: Transition] {
 
-  val transitions = ArrayBuffer[ArrayBuffer[T]]()
-
-  def addState: Int = {
-    transitions += ArrayBuffer[T]()
-    transitions.size - 1
-  }
-
-  def addTransition(from: Int, t: T): Unit = {
-    transitions(from) += t
-  }
-
-}
 
 /**
  * Represents a non-deterministic finite state machine that corresponds to the content model
@@ -25,14 +14,18 @@ trait StateMachine[T <: Transition] {
  * 
  * The state machine is built by linking its start state and its end state using transitions and intermediate states.
  * The linkage is done recursively by traversing the particle.
- * 
+ *
+ * Occurrence constraints are represented by possibly many intermediate states forming an extensional representation.
+ *
+ * Therefore this representation is feasible only for moderate minimum and maximum occurrence constraint numbers. The
+ * special case of an unbounded maximum number of occurrence is handled differently and does not have a negative impact.
  */
 case class Acceptor(particle: Particle) extends StateMachine[Transition] {
 
   val startState = addState
   val endState = addState
 
-  linkStatesByParticleOccurrence(startState, endState, particle)
+  linkStatesByParticle(startState, endState, particle)
 
   /**
    * Links two states by transitions that account for the occurrence constraint of a particle.
@@ -65,12 +58,12 @@ case class Acceptor(particle: Particle) extends StateMachine[Transition] {
    * @param pto
    * @param particle
    */
-  def linkStatesByParticleOccurrence(from: Int, pto: Int, particle: Particle): Unit = {
+  def linkStatesByParticle(from: Int, pto: Int, particle: Particle): Unit = {
 
     val (nbParticleSteps, nbEpsilonSteps, to) = particle.occurs match {
       case Occurs(min, MaxOccurs.Unbounded) => {
         val to = addState
-        linkStatesByParticle(to, to, particle)
+        linkStatesByTerm(to, to, particle)
         addTransition(to, EpsilonTransition(pto))
         (min, 0, to)
       }
@@ -83,7 +76,7 @@ case class Acceptor(particle: Particle) extends StateMachine[Transition] {
         addTransition(from, EpsilonTransition(to))
       }
       case 1 => {
-        linkStatesByParticle(from, to, particle)
+        linkStatesByTerm(from, to, particle)
         if (nbEpsilonSteps >= nbParticleSteps) {
           addTransition(from, EpsilonTransition(to))
         }
@@ -95,10 +88,10 @@ case class Acceptor(particle: Particle) extends StateMachine[Transition] {
           }
           if (nbps > 1) {
             val next = addState
-            linkStatesByParticle(f, next, particle)
+            linkStatesByTerm(f, next, particle)
             go(next, nbps - 1)
           } else {
-            linkStatesByParticle(f, to, particle)
+            linkStatesByTerm(f, to, particle)
           }
         }
         go(from, nbParticleSteps)
@@ -116,7 +109,7 @@ case class Acceptor(particle: Particle) extends StateMachine[Transition] {
    * @param to
    * @param particle
    */
-  def linkStatesByParticle(from: Int, to: Int, particle: Particle): Unit = {
+  def linkStatesByTerm(from: Int, to: Int, particle: Particle): Unit = {
     particle match {
       case particle: ElemDecl => {
         // TODO consider substitution groups
@@ -130,26 +123,26 @@ case class Acceptor(particle: Particle) extends StateMachine[Transition] {
             case head :: _ :: _ => ps.permutations.foreach {
               case h :: t => {
                 val next = addState
-                linkStatesByParticleOccurrence(f, next, h)
+                linkStatesByParticle(f, next, h)
                 go(next, t)
               }
             }
-            case head :: _ => linkStatesByParticleOccurrence(f, to, head)
+            case head :: _ => linkStatesByParticle(f, to, head)
             case _ => addTransition(f, EpsilonTransition(to))
           }
         }
         go(from, particle.nested)
       }
-      case particle: ChoiceParticle => particle.nested.foreach(linkStatesByParticleOccurrence(from, to, _))
+      case particle: ChoiceParticle => particle.nested.foreach(linkStatesByParticle(from, to, _))
       case particle: SeqParticle => {
         def go(f: Int, ps: Seq[Particle]): Unit = {
           ps match {
             case head :: _ :: _ => {
               val next = addState
-              linkStatesByParticleOccurrence(f, next, head)
+              linkStatesByParticle(f, next, head)
               go(next, ps.tail)
             }
-            case head :: _ => linkStatesByParticleOccurrence(f, to, head)
+            case head :: _ => linkStatesByParticle(f, to, head)
             case _ => addTransition(f, EpsilonTransition(to))
           }
         }
@@ -170,51 +163,50 @@ case class Determinized(acceptor: Acceptor) extends StateMachine[NonEpsilonTrans
 
   val isAccepting = ArrayBuffer[Boolean]()
   
-  val stateNumber = scala.collection.mutable.Map[Set[Int], Int]()
+  val dStates = ArrayBuffer[Set[Int]]()
+  val dStateNumber= scala.collection.mutable.Map[Set[Int], Int]()
 
-  traverse(epsilonClosure(Set(acceptor.startState), Seq(acceptor.startState)))
+  subsetConstruction
 
-  def epsilonClosure(stateSet: Set[Int], newStates: Seq[Int]): Set[Int] = {
-    newStates.foldLeft(stateSet)((ss,  state) => {
-      val statesReachableByEpsilonTransition = acceptor.transitions(state).collect {
-        case EpsilonTransition(to) if (!ss.contains(to)) => to
+  def epsilonClosure(state: Int): Set[Int] = {
+    @tailrec
+    def go(stack: List[Int], ec: Set[Int]): Set[Int] = {
+      stack match {
+        case head :: tail => {
+          val newTos = acceptor.transitions(head).collect { case EpsilonTransition(to) => to }.filter(!ec.contains(_))
+          val newStack = newTos.foldRight(tail)(_ :: _)
+          go(newStack, ec ++ newTos)
+        }
+        case _ => ec
       }
-      if (statesReachableByEpsilonTransition.isEmpty) {
-        ss
-      } else {
-        epsilonClosure(ss ++ statesReachableByEpsilonTransition, statesReachableByEpsilonTransition)
-      }
-    })
+    }
+    go(state :: Nil, Set(state))
   }
 
-  /**
-   * Recursively traverses acceptor states, joins epsilon transitions and adds corresponding state set transitions.
-   *
-   * @param fromSet an expanded set of acceptor state numbers
-   * @return the state number that corresponds to the from set in the determinized state machine
-   */
-  def traverse(fromSet: Set[Int]): Int = {
-    if (stateNumber.contains(fromSet)) {
+  def addDState(dState: Set[Int]): Int = {
+    val stateNumber = addState
+    dStates += dState
+    isAccepting += dState.contains(acceptor.endState)
+    dStateNumber.put(dState, stateNumber)
+    stateNumber
+  }
 
-      stateNumber(fromSet)
-      
-    } else {
-      
-      val next = addState
-      stateNumber.put(fromSet, next)
-      isAccepting += fromSet.contains(acceptor.endState)
-      
-      // add transitions for all transitions starting at the "from" set
-      // epsilon transitions are ignored; their target state is contained in the "from" set (because the "from" set is an epsilon closure)
-      fromSet.flatMap(s => acceptor.transitions(s)).collect { case t: NonEpsilonTransition => t }.foreach(t => {
-        val to = traverse(epsilonClosure(Set(t.toState), Seq(t.toState)))
-        t match {
-          case DeclTransition(_, decl) => addTransition(next, DeclTransition(to, decl))
-          case WildcardTransition(_, wildcard) => addTransition(next, WildcardTransition(to, wildcard))
+  def subsetConstruction: Unit = {
+    addDState(epsilonClosure(acceptor.startState))
+    var marked = 0
+    while (marked < dStates.size) {
+      for {
+        state <- dStates(marked)
+        transition <- acceptor.transitions(state).collect { case t: NonEpsilonTransition => t }
+      } {
+        val u = epsilonClosure(transition.toState)
+        val to = dStateNumber.getOrElse(u, addDState(u))
+        transition match {
+          case DeclTransition(_, decl) => addTransition(marked, DeclTransition(to, decl))
+          case WildcardTransition(_, wildcard) => addTransition(marked, WildcardTransition(to, wildcard))
         }
-      })
-
-      next
+      }
+      marked = marked + 1
     }
   }
 

@@ -1,8 +1,7 @@
 package eu.swdev.xml.xsd.instantiation
 
 import java.util
-
-import eu.swdev.xml.fsm.RestrictionCheck
+import eu.swdev.xml.fsm.std.RestrictionCheck
 import eu.swdev.xml.log._
 import eu.swdev.xml.name.{LocalName, QName, Namespace}
 import eu.swdev.xml.schema._
@@ -14,9 +13,19 @@ import scala.annotation.tailrec
   */
 trait SchemaInstantiator { self: SchemaStore with SchemaResolver with SchemaParser =>
 
+  /**
+   * Creates a sequence of jobs to instantiate schema-top components.
+   *
+   * @param schema
+   * @param jobConf
+   * @return
+   */
   def jobs(schema: SchemaElem, jobConf: JobConf): (Messages, Seq[Job[SchemaTopComponent]]) = {
 
+    // determine jobs for schema composition elements
     val compositionMsgsAndJobs: Seq[(Messages, Seq[Job[SchemaTopComponent]])] = for {
+      // Import elements need no jobs. They define namespaces for later usage only. The import is triggered
+      // by the first usage of an imported namespace.
       cmp <- schema.compositions.collect { case Left(cmp: NonImportCompositionCmp) => cmp }
     } yield {
       cmp match {
@@ -149,19 +158,25 @@ trait SchemaInstantiator { self: SchemaStore with SchemaResolver with SchemaPars
             }
             case GlobalRef(symbolSpace, qName, importHint) => state.imported.get(qName.namespace) match {
               case Some(optSchema) => {
+                // it was already tried to import the required namespace
                 optSchema match {
                   case Some(schema) => {
+                    // the import has been successful
+                    // retrieve the required symbol
                     val st = schema.symbolTable.get(qName.localName)(symbolSpace)
                     drive(rec(st), state)
                   }
                   // the schema could not be imported
                   case None => {
+                    // the import was not sucecssfull
+                    // -> the receive function of the await will not be called
                     state
                   }
                 }
               }
-              // the schema has not yet been imported
               case None => {
+                // the schema has not yet been imported
+                // -> try to import the schema and drive this step again
                 val t = importSchema(qName.namespace, importHint)
                 val newState = state.copy(log = concat(t._1, state.log), imported = state.imported + (qName.namespace -> t._2))
                 drive(step, newState)
@@ -226,6 +241,10 @@ trait SchemaInstantiator { self: SchemaStore with SchemaResolver with SchemaPars
         driveSteps(newState)
       }
     }
+
+    //
+    // instantiate a schema
+    //
 
     val jobConf = JobConf(schemaElem, None)
     val (msgs, initialJobs) = jobs(schemaElem, jobConf)
